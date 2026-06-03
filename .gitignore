@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+
+# build output
+backend/dist/
+frontend/dist/
+
+# env files (never commit secrets)
+.env
+.env.local
+.env.*.local
+backend/src/config/.env
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# misc
+.cache/
+.tmp/
