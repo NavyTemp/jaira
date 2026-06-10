@@ -1,6 +1,7 @@
 import TeamModel from "../../models/team.model.js";
 
 export const createTeam = async (req, res, next) => {
+
   const { name, description, membersId, tasksId, chatId } = req.body;
   const ownerId = req.user._id;
   try {
@@ -8,7 +9,7 @@ export const createTeam = async (req, res, next) => {
       name,
       description,
       ownerId,
-      members: membersId.map((memberId) => ({ user: memberId })),
+      members: membersId.map((memberId) => ({ user: memberId, role: "member" })),
       tasksId,
       chat: chatId,
     });
@@ -17,4 +18,6 @@ export const createTeam = async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+  
+  
 };

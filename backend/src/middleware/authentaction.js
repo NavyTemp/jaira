@@ -23,7 +23,7 @@ export const authentication = async (req, res, next) => {
     const decoded = verifyToken({ token, signature });
 
     if (!decoded) {
-      return res.status(401).json({ message: 'Unauthorized' });
+      return res.status(401).json({ message: 'Unauthorized ' });
     }
 
     const revokedToken = await RevokedTokenModel.findOne({

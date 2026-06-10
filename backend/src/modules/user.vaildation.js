@@ -102,3 +102,12 @@ export const updateUserSchema = {
     gender: z.enum([userGender.male, userGender.female]).optional(),
   }),
 };
+
+export const idSchema = {
+  params: z.object({
+    id: z
+      .string()
+      .min(1, "Id is required")
+      .regex(/^[0-9a-fA-F]{24}$/, "Invalid MongoDB ObjectId"),
+  }),
+};
