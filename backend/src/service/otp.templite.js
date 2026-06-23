@@ -91,7 +91,7 @@ const forgotPasswordTemplate = ({
                   color:#9ca3af;
                   font-size:14px;
                 ">
-                  ⏳ This code expires in 10 minutes.
+                  ⏳ This code expires in 5 minutes.
                 </p>
 
                 <p style="

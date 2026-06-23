@@ -7,7 +7,7 @@ import bootstrap from './src/app.controller.js'
 
 
 const app = express()
-const port = 3000
+const port = process.env.port
 bootstrap(app,port)
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`))

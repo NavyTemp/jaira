@@ -23,6 +23,7 @@ export const authentication = async (req, res, next) => {
     const decoded = verifyToken({ token, signature });
 
     if (!decoded) {
+      
       return res.status(401).json({ message: 'Unauthorized ' });
     }
 
@@ -57,6 +58,6 @@ export const authentication = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid token' });
     }
 
-    return res.status(500).json({ message: 'Server error', error: error });
+    return res.status(500).json({ message: 'Server error' });
   }
 };

@@ -19,6 +19,11 @@ const teamSchema = new mongoose.Schema(
       },
     ],
 
+    image: {
+      secure_url: { type: String },
+      public_id: { type: String },
+    },
+
     tasksId: [{ type: mongoose.Schema.Types.ObjectId, ref: "Task" }],
 
     chat: {

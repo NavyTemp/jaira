@@ -12,8 +12,8 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
   });
 
   const info = await transporter.sendMail({
-    from: `"" ${process.env.EMAIL}`, 
-    
+    from: `"TaskFlow" <${process.env.EMAIL}>`, 
+    to,
     subject:subject|| "test email",
     html:html||  "<b> hello world ? </b>",
     attachments: attachments || [],

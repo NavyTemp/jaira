@@ -6,9 +6,8 @@ backend/dist/
 frontend/dist/
 
 # env files (never commit secrets)
-.env
-.env.local
-.env.*.local
+
+
 backend/src/config/.env
 
 # logs

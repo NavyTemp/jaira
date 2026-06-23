@@ -78,7 +78,7 @@ const confirmEmailTemplate = ({ code, userName = "User" }) => {
                 </div>
 
                 <p style="color:#94a3b8;font-size:14px;line-height:1.8;">
-                  This code will expire in 10 minutes.
+                  This code will expire in 5 minutes.
                 </p>
 
                 <p style="color:#94a3b8;font-size:14px;line-height:1.8;">

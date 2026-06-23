@@ -18,35 +18,32 @@ export const multerUploadLocal = (custemPrameter,custemExtation=[]) => {
   });
 
 function fileFilter(req , file, cb) {
-
     if (!custemExtation.includes(file.mimetype)) {
-        cd (new Error('File type is not allowed'))
-
+        cb(new Error('File type is not allowed'), false)
     }else{
         cb(null, true)
     }
-
 } 
   const upload = multer({ storage,fileFilter });
   return upload;
 };
 
 
-export const multerUploadhost = ({custemExtation=[]}) => {
+export const multerUploadhost = ({custemExtation=[], maxSize = 5 * 1024 * 1024}) => {
  
   const storage = multer.diskStorage({});
 
 function fileFilter(req , file, cb) {
 
     if (!custemExtation.includes(file.mimetype)) {
-        cd (new Error('File type is not allowed'))
+        cb(new Error('File type is not allowed'), false)
 
     }else{
         cb(null, true)
     }
 
 } 
-  const upload = multer({ storage,fileFilter });
+  const upload = multer({ storage, fileFilter, limits: { fileSize: maxSize } });
   return upload;
 };
   

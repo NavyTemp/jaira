@@ -7,8 +7,9 @@ const revokedTokenSchema = new mongoose.Schema({
     required: true,
   },
   expireAt: {
-   type: String,
+   type: Date,
     required: true,
+    index: { expires: 0 },
   }
 }, { timestamps: true });
 
