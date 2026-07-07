@@ -25,11 +25,24 @@ const taskSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+        comments: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        text: String,
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],  
 
-    assignedTo: {
+    assignedTo:[{
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-    },
+    }],
 
     team: {
       type: mongoose.Schema.Types.ObjectId,

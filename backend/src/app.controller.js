@@ -5,6 +5,7 @@ import express from "express"
 import connectiondB from "./DB/connection.js"
 import userRoutr from "./modules/user.controller.js"
 import teamRouter from "./modules/team/team.controller.js"
+import taskRouter from "./modules/Task/task.controller.js"
 
 const bootstrap = (app, port) => {
   app.use(cors())
@@ -20,6 +21,7 @@ const bootstrap = (app, port) => {
 
   app.use("/users", userRoutr)
   app.use("/teams", teamRouter)
+  app.use("/tasks", taskRouter)
 
   app.use((req, res) => {
     return res

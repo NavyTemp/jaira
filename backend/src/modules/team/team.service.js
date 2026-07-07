@@ -262,33 +262,45 @@ export const changeMemberRole = async (req, res, next) => {
 
 export const leaveTeam = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const userId = req.user._id.toString();
+    const userId = req.user._id;
+    const { teamId } = req.params;
 
-    const team = await TeamModel.findById(id);
-    if (!team) {
-      return res.status(404).json({ message: "team not found" });
-    }
-
-    if (team.ownerId.toString() === userId) {
-      return res.status(400).json({ message: "owner cannot leave the team, transfer ownership or delete it" });
-    }
-
-    const memberIndex = team.members.findIndex(
-      (m) => m.user.toString() === userId,
+  
+    const team = await TeamModel.findOneAndUpdate(
+      { _id: teamId, "members.user": userId },
+      { $pull: { members: { user: userId } } },
+      { new: true },
     );
-    if (memberIndex === -1) {
-      return res.status(400).json({ message: "you are not a member of this team" });
+
+    if (!team) {
+      return res.status(404).json({
+        message: "team not found or you're not a member",
+      });
     }
 
-    team.members.splice(memberIndex, 1);
-    await team.save();
 
-    await UserModel.findByIdAndUpdate(req.user._id, {
-      $pull: { teams: team._id },
+    if (team.members.length === 0) {
+      await TeamModel.deleteOne({ _id: teamId });
+
+      return res.status(200).json({
+        message: "you left and team was deleted (no members left)",
+      });
+    }
+
+    
+    const hasAdmin = team.members.some((m) => m.role === "admin");
+
+    if (!hasAdmin) {
+      await TeamModel.updateOne(
+        { _id: teamId, "members.user": team.members[0].user },
+        { $set: { "members.$.role": "admin" } },
+      );
+    }
+
+    return res.status(200).json({
+      message: "left team successfully",
+      team,
     });
-
-    return res.status(200).json({ message: "you left the team" });
   } catch (error) {
     return next(error);
   }
@@ -408,6 +420,22 @@ export const deleteTeamImage = async (req, res, next) => {
     team.image = undefined;
     await team.save();
     return res.status(200).json({ message: "team image deleted" });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const getTeamImage = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const team = await TeamModel.findById(id);
+    if (!team) {
+      return res.status(404).json({ message: "team not found" });
+    }
+    if (!team.image || !team.image.public_id) {
+      return res.status(400).json({ message: "team image not found" });
+    }
+    return res.status(200).json({ message: "team image fetched", image: team.image.secure_url });
   } catch (error) {
     return next(error);
   }
