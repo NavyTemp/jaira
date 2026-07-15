@@ -15,7 +15,7 @@ export const sendEmail = async ({ to, subject, html, attachments }) => {
     from: `"TaskFlow" <${process.env.EMAIL}>`, 
     to,
     subject:subject|| "test email",
-    html:html||  "<b> hello world ? </b>",
+    html:html||  "<b> Hello ? </b>",
     attachments: attachments || [],
   });
   if (info.accepted.length > 0) {

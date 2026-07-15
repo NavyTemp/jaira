@@ -54,13 +54,30 @@ const taskSchema = new mongoose.Schema(
       
       ref: "Chat",
     },
-
-    attachments: [
+attachments: [
       {
-        url: String,
-        type: String,
+        secure_url: {
+          type: String,
+          required: true,
+        },
+
+        public_id: {
+          type: String,
+          required: true,
+        },
+
+        uploadedBy:{
+          type: mongoose.Schema.Types.ObjectId,
+          ref:"User"
+        },
+
+        createdAt:{
+          type:Date,
+          default:Date.now
+        }
       },
     ],
+
 
     tags: [String],
   },
