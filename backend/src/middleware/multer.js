@@ -29,7 +29,7 @@ function fileFilter(req , file, cb) {
 };
 
 
-export const multerUploadhost = ({custemExtation=[], maxSize = 5 * 1024 * 1024}) => {
+export const multerUploadhost = ({custemExtation=[], maxSize = 10 * 1024 * 1024}) => {
  
   const storage = multer.diskStorage({});
 

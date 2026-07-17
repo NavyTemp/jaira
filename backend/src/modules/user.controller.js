@@ -11,16 +11,16 @@ import { userRole } from "../utlis/genral_emun.js";
 const userRoutr = Router();
 
 // ─── AUTH (public) ───────────────────────────────────────
-userRoutr.post("/signup", validation(vs.signupSchema), us.signup);
-userRoutr.post("/login", validation(vs.loginSchema), us.login);
-userRoutr.post("/verify-email", validation(vs.verifyEmailSchema), us.verifyEmail);
-userRoutr.post("/forget-password", validation(vs.forgetPasswordSchema), us.forgetPassword);
-userRoutr.post("/reset-password", validation(vs.resetPasswordSchema), us.resetPassword);
-userRoutr.post("/resend-otp", validation(vs.resendOtpSchema), us.resendOtp);
+userRoutr.post("/auth/signup", validation(vs.signupSchema), us.signup);
+userRoutr.post("/auth/login", validation(vs.loginSchema), us.login);
+userRoutr.post("/auth/verify-email", validation(vs.verifyEmailSchema), us.verifyEmail);
+userRoutr.post("/auth/forget-password", validation(vs.forgetPasswordSchema), us.forgetPassword);
+userRoutr.post("/auth/reset-password", validation(vs.resetPasswordSchema), us.resetPassword);
+userRoutr.post("/auth/resend-otp", validation(vs.resendOtpSchema), us.resendOtp);
 
 // ─── AUTH (protected) ────────────────────────────────────
-userRoutr.post("/logout", authentication, us.logout);
-userRoutr.post("/refresh-token", authentication, us.refreshToken);
+userRoutr.post("/auth/logout", authentication, us.logout);
+userRoutr.post("/auth/refresh-token", authentication, us.refreshToken);
 
 // ─── PROFILE (self) ──────────────────────────────────────
 userRoutr.get("/me", authentication, us.getMe);

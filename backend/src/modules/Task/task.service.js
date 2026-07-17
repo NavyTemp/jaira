@@ -2,6 +2,7 @@ import { is } from "zod/v4/locales";
 import TaskModel from "../../models/task.model.js";
 import TeamModel from "../../models/team.model.js";
 import UserModel from "../../models/user.model.js";
+import { createActivity } from "../../service/activity.js";
 
 const allowedTransitions = {
   todo: ["in_progress"],
@@ -50,6 +51,14 @@ export const Create_Task = async (req, res, next) => {
       team,
       assignedTo,
       createdBy: userId,
+    });
+
+    const activity = await createActivity({
+      team: exist_team._id,
+      task: new_task._id,
+      user: userId,
+      action: "task_created",
+      metadata: { title: new_task.title },
     });
 
     return res.status(201).json({ message: "Task created successfully" });
@@ -120,12 +129,40 @@ export const update_Task = async (req, res, next) => {
       });
     }
     const { title, description, dueDate, team, assignedTo = [] } = req.body;
+
+    const oldData = {
+      title: task.title,
+      description: task.description,
+      dueDate: task.dueDate,
+      assignedTo: task.assignedTo,
+    };
+
     task.title = title;
     task.description = description;
     task.dueDate = dueDate;
     task.team = team;
     task.assignedTo = assignedTo;
     await task.save();
+
+    const activity = await createActivity({
+      team: task.team,
+
+      task: task._id,
+
+      user: userId,
+
+      action: "task_updated",
+
+      metadata: {
+        oldData,
+        newData: {
+          title,
+          description,
+          dueDate,
+          assignedTo,
+        },
+      },
+    });
     return res.status(200).json({ message: "task updated", task });
   } catch (error) {
     return next(error);
@@ -137,6 +174,7 @@ export const update_TaskStatus = async (req, res, next) => {
     const userId = req.user._id;
     const { id } = req.params;
     const { status } = req.body;
+    const oldStatus = task.status;
 
     const task = await TaskModel.findById(id).populate("team");
 
@@ -160,13 +198,11 @@ export const update_TaskStatus = async (req, res, next) => {
 
     const isAdmin = member.role === "admin";
 
-  
     if (!isAssigned && !isAdmin) {
       return res.status(403).json({
         message: "not allowed",
       });
     }
-
 
     const isValidTransition = canChangeStatus(task.status, status);
 
@@ -178,6 +214,24 @@ export const update_TaskStatus = async (req, res, next) => {
 
     task.status = status;
     await task.save();
+
+
+    const activity = await createActivity({
+      team: task.team,
+    
+        task:task._id,
+
+    user:userId,
+
+    action:"status_changed",
+
+    metadata:{
+        oldStatus,
+        newStatus:status
+    }
+
+    
+    })
 
     return res.status(200).json({
       message: "status updated",
@@ -202,6 +256,21 @@ export const delete_Task = async (req, res, next) => {
     }
 
     await TaskModel.findByIdAndDelete(id);
+
+ const activity = await createActivity({
+      team: task.team,
+
+      task: task._id,
+
+      user: req.user._id,
+
+      action: "task_deleted",
+      metadata: {
+   title : task.title
+
+      },
+    });
+   
 
     return res.status(200).json({ message: "task deleted" });
   } catch (error) {
@@ -231,6 +300,22 @@ export const addComment = async (req, res, next) => {
 
     await task.save();
 
+
+
+    const activity = await createActivity({
+      team: task.team,
+
+      task: task._id,   
+
+      user: userId,
+
+      action: "comment_added",
+
+      metadata: {
+        comment: text,
+      },
+    }); 
+
     return res.status(201).json({
       message: "comment added",
       comments: task.comments,
@@ -257,14 +342,13 @@ export const updateComment = async (req, res, next) => {
     return res.status(404).json({ message: "comment not found" });
   } else {
     existingTask.comments[commentIndex].text = text;
-  } 
+  }
 
   await existingTask.save();
   return res
     .status(200)
     .json({ message: "comment updated", comment: existingTask.comments });
 };
- 
 
 export const deleteComment = async (req, res, next) => {
   const { id } = req.params;
@@ -360,9 +444,26 @@ export const uploadTaskAttachments = async (req, res, next) => {
 
       task: updatedTask,
     });
-  } catch (error) {
-  
 
+
+    await createActivity({
+
+    team:task.team,
+
+    task:id,
+
+    user:userId,
+
+    action:"attachment_uploaded",
+
+    metadata:{
+        files:uploadedImages.map(
+            file=>file.public_id
+        )
+    }
+
+});
+  } catch (error) {
     if (uploadedImages.length) {
       await Promise.all(
         uploadedImages.map((image) =>
@@ -453,6 +554,20 @@ export const deleteTaskAttachment = async (req, res, next) => {
       (attachment) => attachment.public_id !== public_id,
     );
     await task.save();
+    const activity = await createActivity({
+
+      team:task.team,
+
+      task:id,
+
+      user:userId,
+
+      action:"attachment_deleted",
+
+      metadata:{
+          file:public_id
+      }
+    })
     return res.status(200).json({ message: "attachment deleted" });
   } catch (error) {
     return next(error);

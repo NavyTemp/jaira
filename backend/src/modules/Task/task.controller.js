@@ -21,7 +21,7 @@ taskRouter.get("/:id", authentication, validation(TSV.taskIdSchema), TS.Get_Task
 taskRouter.put(
   "/:id/update",
   authentication,
-  validation(TSV.taskIdSchema),
+  validation(TSV.updateTaskSchema),
   TS.update_Task,
 );
 taskRouter.put(
@@ -39,7 +39,7 @@ taskRouter.delete(
 taskRouter.post(
   "/:id/comment",
   authentication,
-  validation(TSV.taskIdSchema),
+  validation(TSV.add_comment),
   TS.addComment,
 );
 taskRouter.delete(
@@ -51,7 +51,7 @@ taskRouter.delete(
 taskRouter.put(
   "/:id/comment/:commentId",
   authentication,
-  validation(TSV.commentIdSchema),
+  validation(TSV.update_comment),
   TS.updateComment,
 );
 taskRouter.post(
@@ -65,7 +65,7 @@ taskRouter.post(
 taskRouter.put(
   "/:id/uplode",
   authentication,
-  multerUploadhost({ custemExtation: [...MIME_GROUPS.images] }).array(
+  multerUploadhost({ custemExtation: [...MIME_GROUPS.images,...MIME_GROUPS.docs] }).array(
     "attachments",
   ),
   TS.changeTaskimage,

@@ -2,6 +2,7 @@ import fs from "fs";
 import TeamModel from "../../models/team.model.js";
 import UserModel from "../../models/user.model.js";
 import cloudinary from "../../service/cloudinary.js";
+import { meta } from "zod/v4/core";
 
 const removeTempFile = (filePath) => {
   if (!filePath) return;
@@ -12,8 +13,14 @@ const removeTempFile = (filePath) => {
 
 export const createTeam = async (req, res, next) => {
   try {
-    const { name, description, membersId = [], tasksId = [], chatId } = req.body;
-    
+    const {
+      name,
+      description,
+      membersId = [],
+      tasksId = [],
+      chatId,
+    } = req.body;
+
     const ownerId = req.user._id;
 
     const members = membersId.map((id) => ({ user: id, role: "member" }));
@@ -30,7 +37,7 @@ export const createTeam = async (req, res, next) => {
       tasksId,
       chat: chatId,
     });
-  //update user's teams
+    //update user's teams
     const memberUserIds = members.map((m) => m.user);
     await UserModel.updateMany(
       { _id: { $in: memberUserIds } },
@@ -46,7 +53,7 @@ export const getTeams = async (req, res, next) => {
   try {
     const userId = req.user._id;
     const teams = await TeamModel.find({ "members.user": userId })
-    
+
       .populate("ownerId", "name email image")
       .populate("members.user", "name email image");
 
@@ -67,12 +74,14 @@ export const getTeamById = async (req, res, next) => {
     if (!team) {
       return res.status(404).json({ message: "team not found" });
     }
-     
+
     const isMember = team.members.some(
       (m) => m.user?._id?.toString() === req.user._id.toString(),
     );
     if (!isMember) {
-      return res.status(403).json({ message: "you are not a member of this team" });
+      return res
+        .status(403)
+        .json({ message: "you are not a member of this team" });
     }
 
     return res.status(200).json({ message: "team fetched", team });
@@ -94,7 +103,9 @@ export const updateTeam = async (req, res, next) => {
         (m) => m.user.toString() === req.user._id.toString(),
       );
       if (!memberEntry || memberEntry.role !== "admin") {
-        return res.status(403).json({ message: "only team owner or admin can update the team" });
+        return res
+          .status(403)
+          .json({ message: "only team owner or admin can update the team" });
       }
     }
 
@@ -118,7 +129,9 @@ export const deleteTeam = async (req, res, next) => {
     }
 
     if (team.ownerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "only team owner can delete the team" });
+      return res
+        .status(403)
+        .json({ message: "only team owner can delete the team" });
     }
 
     if (team.image && team.image.public_id) {
@@ -155,7 +168,9 @@ export const addMember = async (req, res, next) => {
         (m) => m.user.toString() === req.user._id.toString(),
       );
       if (!requester || requester.role !== "admin") {
-        return res.status(403).json({ message: "only team owner or admin can add members" });
+        return res
+          .status(403)
+          .json({ message: "only team owner or admin can add members" });
       }
     }
 
@@ -178,6 +193,15 @@ export const addMember = async (req, res, next) => {
       $addToSet: { teams: team._id },
     });
 
+    const activity = await ActivityModel.create({
+      user: req.user._id,
+      team: team._id,
+      type: "join_member",
+      metadata: {
+        teamName: team.name,
+      },
+    });
+
     return res.status(200).json({ message: "member added", team });
   } catch (error) {
     return next(error);
@@ -198,7 +222,9 @@ export const removeMember = async (req, res, next) => {
         (m) => m.user.toString() === req.user._id.toString(),
       );
       if (!requester || requester.role !== "admin") {
-        return res.status(403).json({ message: "only team owner or admin can remove members" });
+        return res
+          .status(403)
+          .json({ message: "only team owner or admin can remove members" });
       }
     }
 
@@ -210,7 +236,9 @@ export const removeMember = async (req, res, next) => {
       (m) => m.user.toString() === userId,
     );
     if (memberIndex === -1) {
-      return res.status(404).json({ message: "user is not a member of this team" });
+      return res
+        .status(404)
+        .json({ message: "user is not a member of this team" });
     }
 
     team.members.splice(memberIndex, 1);
@@ -219,7 +247,14 @@ export const removeMember = async (req, res, next) => {
     await UserModel.findByIdAndUpdate(userId, {
       $pull: { teams: team._id },
     });
-
+    const activity = await ActivityModel.create({
+      user: req.user._id,
+      team: team._id,
+      type: "leave",
+      metadata: {
+        teamName: team.name,
+      },
+    });
     return res.status(200).json({ message: "member removed", team });
   } catch (error) {
     return next(error);
@@ -237,22 +272,36 @@ export const changeMemberRole = async (req, res, next) => {
     }
 
     if (team.ownerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "only team owner can change member roles" });
+      return res
+        .status(403)
+        .json({ message: "only team owner can change member roles" });
     }
 
     if (team.ownerId.toString() === userId) {
-      return res.status(400).json({ message: "cannot change the owner's role" });
+      return res
+        .status(400)
+        .json({ message: "cannot change the owner's role" });
     }
 
-    const member = team.members.find(
-      (m) => m.user.toString() === userId,
-    );
+    const member = team.members.find((m) => m.user.toString() === userId);
     if (!member) {
-      return res.status(404).json({ message: "user is not a member of this team" });
+      return res
+        .status(404)
+        .json({ message: "user is not a member of this team" });
     }
 
     member.role = role;
     await team.save();
+
+    const activity = await ActivityModel.create({
+      user: req.user._id,
+      team: team._id,
+      type: "roleChanged",
+      metadata: {
+        teamName: team.name,
+        role: role,
+      },
+    });
 
     return res.status(200).json({ message: "member role updated", team });
   } catch (error) {
@@ -265,7 +314,6 @@ export const leaveTeam = async (req, res, next) => {
     const userId = req.user._id;
     const { teamId } = req.params;
 
-  
     const team = await TeamModel.findOneAndUpdate(
       { _id: teamId, "members.user": userId },
       { $pull: { members: { user: userId } } },
@@ -278,7 +326,6 @@ export const leaveTeam = async (req, res, next) => {
       });
     }
 
-
     if (team.members.length === 0) {
       await TeamModel.deleteOne({ _id: teamId });
 
@@ -287,7 +334,6 @@ export const leaveTeam = async (req, res, next) => {
       });
     }
 
-    
     const hasAdmin = team.members.some((m) => m.role === "admin");
 
     if (!hasAdmin) {
@@ -296,6 +342,14 @@ export const leaveTeam = async (req, res, next) => {
         { $set: { "members.$.role": "admin" } },
       );
     }
+    const activity = await ActivityModel.create({
+      user: req.user._id,
+      team: team._id,
+      type: "leave",
+      metadata: {
+        teamName: team.name,
+      },
+    });
 
     return res.status(200).json({
       message: "left team successfully",
@@ -317,14 +371,16 @@ export const transferOwnership = async (req, res, next) => {
     }
 
     if (team.ownerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "only team owner can transfer ownership" });
+      return res
+        .status(403)
+        .json({ message: "only team owner can transfer ownership" });
     }
 
-    const member = team.members.find(
-      (m) => m.user.toString() === userId,
-    );
+    const member = team.members.find((m) => m.user.toString() === userId);
     if (!member) {
-      return res.status(400).json({ message: "target user is not a member of this team" });
+      return res
+        .status(400)
+        .json({ message: "target user is not a member of this team" });
     }
 
     const oldOwnerEntry = team.members.find(
@@ -335,6 +391,17 @@ export const transferOwnership = async (req, res, next) => {
     team.ownerId = userId;
 
     await team.save();
+
+    const activity = await ActivityModel.create({
+      user: req.user._id,
+      team: team._id,
+      type: "ownership_transferred",
+      metadata: {
+        teamName: team.name,
+        oldOwner: team.ownerId,
+        newOwner: userId,
+      },
+    });
     return res.status(200).json({ message: "ownership transferred", team });
   } catch (error) {
     return next(error);
@@ -356,7 +423,9 @@ export const uploadTeamImage = async (req, res, next) => {
     }
     if (team.image && team.image.public_id) {
       removeTempFile(req.file.path);
-      return res.status(400).json({ message: "image already exists, use PUT to change it" });
+      return res
+        .status(400)
+        .json({ message: "image already exists, use PUT to change it" });
     }
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: `task-management/teams/${id}`,
@@ -368,6 +437,7 @@ export const uploadTeamImage = async (req, res, next) => {
       public_id: result.public_id,
     };
     await team.save();
+
     return res.status(200).json({ message: "team image uploaded", team });
   } catch (error) {
     removeTempFile(req.file?.path);
@@ -435,7 +505,9 @@ export const getTeamImage = async (req, res, next) => {
     if (!team.image || !team.image.public_id) {
       return res.status(400).json({ message: "team image not found" });
     }
-    return res.status(200).json({ message: "team image fetched", image: team.image.secure_url });
+    return res
+      .status(200)
+      .json({ message: "team image fetched", image: team.image.secure_url });
   } catch (error) {
     return next(error);
   }
