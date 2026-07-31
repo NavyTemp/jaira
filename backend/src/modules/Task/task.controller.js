@@ -1,80 +1,104 @@
 import { Router } from "express";
 import * as TS from "./task.service.js";
-
 import { validation } from "../../middleware/vaildation.js";
 import * as TSV from "./task.vaildation.js";
 import { authentication } from "../../middleware/authentaction.js";
-import multer from "multer";
 import { multerUploadhost } from "../../middleware/multer.js";
 import { MIME_GROUPS } from "../../utlis/genralFileEx.js";
 
 const taskRouter = Router();
-//-------------------CRUD----------------
+
+// ─── CRUD ────────────────────────────────────────────────
 taskRouter.post(
   "/",
-  validation(TSV.createTaskSchema),
   authentication,
+  validation(TSV.createTaskSchema),
   TS.Create_Task,
 );
-taskRouter.get("/", authentication, TS.Get_Task);
-taskRouter.get("/:id", authentication, validation(TSV.taskIdSchema), TS.Get_TaskById);
-taskRouter.put(
-  "/:id/update",
+taskRouter.get(
+  "/",
+  authentication,
+  validation(TSV.listTasksSchema),
+  TS.Get_Task,
+);
+taskRouter.get(
+  "/:id",
+  authentication,
+  validation(TSV.taskIdSchema),
+  TS.Get_TaskById,
+);
+taskRouter.patch(
+  "/:id",
   authentication,
   validation(TSV.updateTaskSchema),
   TS.update_Task,
 );
-taskRouter.put(
-  "/:id/satatus",
+taskRouter.patch(
+  "/:id/status",
   authentication,
-  validation(TSV.taskIdSchema),
+  validation(TSV.updateTaskStatusSchema),
   TS.update_TaskStatus,
 );
+taskRouter.patch(
+  "/:id/assign",
+  authentication,
+  validation(TSV.assignTaskSchema),
+  TS.assignTask,
+);
 taskRouter.delete(
-  "/:id/delete",
+  "/:id",
   authentication,
   validation(TSV.taskIdSchema),
   TS.delete_Task,
 );
-taskRouter.post(
-  "/:id/comment",
+
+// ─── COMMENTS ────────────────────────────────────────────
+taskRouter.get(
+  "/:id/comments",
   authentication,
-  validation(TSV.add_comment),
+  validation(TSV.taskIdSchema),
+  TS.listComments,
+);
+taskRouter.post(
+  "/:id/comments",
+  authentication,
+  validation(TSV.addCommentSchema),
   TS.addComment,
 );
+taskRouter.patch(
+  "/:id/comments/:commentId",
+  authentication,
+  validation(TSV.updateCommentSchema),
+  TS.updateComment,
+);
 taskRouter.delete(
-  "/:id/comment/:commentId",
+  "/:id/comments/:commentId",
   authentication,
   validation(TSV.commentIdSchema),
   TS.deleteComment,
 );
-taskRouter.put(
-  "/:id/comment/:commentId",
+
+// ─── ATTACHMENTS ─────────────────────────────────────────
+taskRouter.get(
+  "/:id/attachments",
   authentication,
-  validation(TSV.update_comment),
-  TS.updateComment,
+  validation(TSV.taskIdSchema),
+  TS.getTaskAttachments,
 );
 taskRouter.post(
-  "/:id/task/uplode",
+  "/:id/attachments",
   authentication,
-  multerUploadhost({ custemExtation: [...MIME_GROUPS.images] }).array(
-    "attachments",
-  ),
+  validation(TSV.taskIdSchema),
+  multerUploadhost({
+    custemExtation: [...MIME_GROUPS.images, ...MIME_GROUPS.docs],
+  }).array("attachments"),
   TS.uploadTaskAttachments,
 );
-taskRouter.put(
-  "/:id/uplode",
-  authentication,
-  multerUploadhost({ custemExtation: [...MIME_GROUPS.images,...MIME_GROUPS.docs] }).array(
-    "attachments",
-  ),
-  TS.changeTaskimage,
-);
 taskRouter.delete(
-  "/:id/uplode",
+  "/:id/attachments",
   authentication,
+  validation(TSV.deleteAttachmentSchema),
   TS.deleteTaskAttachment,
 );
 
-taskRouter.get("/:id/attachments", authentication, TS.getTaskAttachments);
 export default taskRouter;

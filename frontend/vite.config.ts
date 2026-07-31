@@ -24,6 +24,13 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ''),
       },
+      // Proxy the Socket.IO websocket to the backend so the browser talks to a
+      // single origin (no CORS) in development.
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
 })

@@ -1,8 +1,16 @@
-import { is } from "zod/v4/locales";
+import fs from "fs";
+
 import TaskModel from "../../models/task.model.js";
 import TeamModel from "../../models/team.model.js";
-import UserModel from "../../models/user.model.js";
+import cloudinary from "../../service/cloudinary.js";
 import { createActivity } from "../../service/activity.js";
+import { createNotifications } from "../notification/notification.service.js";
+import {
+  createTaskChat,
+  addParticipant,
+  deleteChatCascade,
+} from "../chat/chat.service.js";
+import { emitToUser, emitToChat } from "../../sockets/socket.js";
 
 const allowedTransitions = {
   todo: ["in_progress"],
@@ -10,75 +18,125 @@ const allowedTransitions = {
   review: ["done", "in_progress"],
   done: [],
 };
+
+const canChangeStatus = (currentStatus, newStatus) =>
+  currentStatus === newStatus ||
+  allowedTransitions[currentStatus]?.includes(newStatus);
+
 const removeTempFile = (filePath) => {
   if (!filePath) return;
   fs.unlink(filePath, () => {});
 };
-const canChangeStatus = (currentStatus, newStatus) => {
-  return allowedTransitions[currentStatus]?.includes(newStatus);
+
+/** "owner" | "admin" | "member" | null for the given user in a team doc. */
+const getTeamRole = (team, userId) => {
+  if (!team) return null;
+  if (team.ownerId?.toString() === userId.toString()) return "owner";
+  const member = team.members.find(
+    (m) => m.user.toString() === userId.toString(),
+  );
+  return member ? member.role : null;
 };
+
+const uniqueIds = (ids = []) => [
+  ...new Set(ids.filter(Boolean).map((id) => id.toString())),
+];
+
+const canAccessTask = (task, teamDoc, userId) => {
+  const isCreator = task.createdBy.toString() === userId.toString();
+  const isAssignee = task.assignedTo.some(
+    (u) => u.toString() === userId.toString(),
+  );
+  const isTeamMember = getTeamRole(teamDoc, userId) !== null;
+  return isCreator || isAssignee || isTeamMember;
+};
+
+/** Push a live task change to everyone who cares (creator, assignees, chat). */
+const emitTaskUpdate = (task, event = "task:updated") => {
+  const payload = { taskId: task._id.toString(), task };
+  const recipients = [task.createdBy, ...(task.assignedTo || [])];
+  recipients.forEach((r) => emitToUser(r, event, payload));
+  if (task.chat) emitToChat(task.chat, event, payload);
+};
+
+// ─── CRUD ────────────────────────────────────────────────
+
 export const Create_Task = async (req, res, next) => {
   try {
-    const { title, description, dueDate, team, assignedTo = [] } = req.body;
-
-    const userId = req.user._id;
-    const exist_team = await TeamModel.findById(team);
-
-    if (!exist_team) {
-      return res.status(404).json({ message: "team not found" });
-    }
-
-    const isMember = await exist_team.members.find(
-      (m) => m.user.toString() === userId.toString(),
-    );
-    if (!isMember) {
-      return res
-        .status(403)
-        .json({ message: "you are not a member of this team" });
-    }
-    console.log(isMember);
-
-    if (is_Member.role !== "admin") {
-      return res
-        .status(403)
-        .json({ message: "you are not an admin of this team" });
-    }
-
-    const new_task = await TaskModel.create({
+    const {
       title,
       description,
       dueDate,
+      priority,
+      tags,
       team,
+      assignedTo = [],
+    } = req.body;
+
+    const userId = req.user._id;
+    let teamDoc = null;
+
+    if (team) {
+      teamDoc = await TeamModel.findById(team);
+      if (!teamDoc) {
+        return res.status(404).json({ message: "team not found" });
+      }
+      if (!getTeamRole(teamDoc, userId)) {
+        return res
+          .status(403)
+          .json({ message: "you are not a member of this team" });
+      }
+    }
+
+    const task = await TaskModel.create({
+      title,
+      description,
+      dueDate,
+      priority,
+      tags,
+      team: team || undefined,
       assignedTo,
       createdBy: userId,
     });
 
-    const activity = await createActivity({
-      team: exist_team._id,
-      task: new_task._id,
+    // A team task gets its own chat + is linked back to the team.
+    if (teamDoc) {
+      const chat = await createTaskChat(task._id, teamDoc._id, [
+        userId,
+        ...assignedTo,
+      ]);
+      task.chat = chat._id;
+      await task.save();
+
+      await TeamModel.findByIdAndUpdate(teamDoc._id, {
+        $addToSet: { tasksId: task._id },
+      });
+    }
+
+    await createActivity({
+      team: teamDoc?._id,
+      task: task._id,
       user: userId,
       action: "task_created",
-      metadata: { title: new_task.title },
+      metadata: { title: task.title },
     });
 
-    return res.status(201).json({ message: "Task created successfully" });
-  } catch (error) {
-    return next(error);
-  }
-};
+    await createNotifications(assignedTo, {
+      message: `You were assigned to task "${task.title}"`,
+      type: "task",
+      relatedId: task._id,
+      exclude: userId,
+    });
 
-export const Get_TaskById = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const task = await TaskModel.findById(id)
-      .populate("team", "name")
-      .populate("createdBy", "name email image")
-      .populate("assignedTo", "name email image")
-      .populate("comments.user", "name email image");
-    if (!task) {
-      return res.status(404).json({ message: "task not found" });
-    }
-    return res.status(200).json({ message: "task fetched", task });
+    const populated = await task.populate([
+      { path: "team", select: "name" },
+      { path: "assignedTo", select: "name email image" },
+      { path: "createdBy", select: "name email image" },
+    ]);
+
+    return res
+      .status(201)
+      .json({ message: "Task created successfully", task: populated });
   } catch (error) {
     return next(error);
   }
@@ -87,18 +145,75 @@ export const Get_TaskById = async (req, res, next) => {
 export const Get_Task = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const { status, priority, team, assignedTo, dueBefore, dueAfter } =
+      req.query;
 
-    const tasks = await TaskModel.find({
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
+
+    const filter = {
       $or: [{ createdBy: userId }, { assignedTo: userId }],
-    })
-      .populate("team", "name")
-      .populate("createdBy", "name email")
-      .populate("assignedTo", "name email");
+    };
 
-    return res.status(200).json({
-      message: "tasks fetched",
-      tasks,
-    });
+    if (status) filter.status = status;
+    if (priority) filter.priority = priority;
+    if (team) filter.team = team;
+    if (assignedTo) filter.assignedTo = assignedTo;
+    if (dueBefore || dueAfter) {
+      filter.dueDate = {};
+      if (dueBefore) filter.dueDate.$lte = new Date(dueBefore);
+      if (dueAfter) filter.dueDate.$gte = new Date(dueAfter);
+    }
+
+    const [tasks, total] = await Promise.all([
+      TaskModel.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate("team", "name")
+        .populate("createdBy", "name email image")
+        .populate("assignedTo", "name email image"),
+      TaskModel.countDocuments(filter),
+    ]);
+
+    return res
+      .status(200)
+      .json({ message: "tasks fetched", tasks, page, limit, total });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const Get_TaskById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+
+    const task = await TaskModel.findById(id)
+      .populate("team", "name members ownerId")
+      .populate("createdBy", "name email image")
+      .populate("assignedTo", "name email image")
+      .populate("comments.user", "name email image");
+
+    if (!task) {
+      return res.status(404).json({ message: "task not found" });
+    }
+
+    const isCreator = task.createdBy?._id?.toString() === userId.toString();
+    const isAssignee = task.assignedTo?.some(
+      (u) => u._id.toString() === userId.toString(),
+    );
+    const isTeamMember = task.team
+      ? getTeamRole(task.team, userId) !== null
+      : false;
+
+    if (!isCreator && !isAssignee && !isTeamMember) {
+      return res
+        .status(403)
+        .json({ message: "you are not allowed to view this task" });
+    }
+
+    return res.status(200).json({ message: "task fetched", task });
   } catch (error) {
     return next(error);
   }
@@ -108,62 +223,105 @@ export const update_Task = async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user._id;
+
     const task = await TaskModel.findById(id);
     if (!task) {
       return res.status(404).json({ message: "task not found" });
     }
 
-    const isAllowed =
-      task.createdBy.toString() === userId.toString() ||
-      task.assignedTo.includes(userId);
+    const teamDoc = task.team ? await TeamModel.findById(task.team) : null;
+    const role = getTeamRole(teamDoc, userId);
+    const isCreator = task.createdBy.toString() === userId.toString();
+    if (!isCreator && role !== "owner" && role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "not allowed to update this task" });
+    }
 
-    if (!isAllowed) {
-      return res.status(403).json({
-        message: "not allowed to update this task",
-      });
-    }
-    const isAdmin = await UserModel.findById(userId);
-    if (isAdmin.role !== "admin") {
-      return res.status(403).json({
-        message: "not allowed to update this task",
-      });
-    }
-    const { title, description, dueDate, team, assignedTo = [] } = req.body;
+    const { title, description, dueDate, priority, tags } = req.body;
 
     const oldData = {
       title: task.title,
       description: task.description,
       dueDate: task.dueDate,
-      assignedTo: task.assignedTo,
+      priority: task.priority,
+      tags: task.tags,
     };
 
-    task.title = title;
-    task.description = description;
-    task.dueDate = dueDate;
-    task.team = team;
+    if (title !== undefined) task.title = title;
+    if (description !== undefined) task.description = description;
+    if (dueDate !== undefined) task.dueDate = dueDate;
+    if (priority !== undefined) task.priority = priority;
+    if (tags !== undefined) task.tags = tags;
+
+    await task.save();
+
+    await createActivity({
+      team: task.team,
+      task: task._id,
+      user: userId,
+      action: "task_updated",
+      metadata: {
+        oldData,
+        newData: { title, description, dueDate, priority, tags },
+      },
+    });
+
+    emitTaskUpdate(task);
+
+    return res.status(200).json({ message: "task updated", task });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const assignTask = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+    const { assignedTo = [] } = req.body;
+
+    const task = await TaskModel.findById(id);
+    if (!task) {
+      return res.status(404).json({ message: "task not found" });
+    }
+
+    const teamDoc = task.team ? await TeamModel.findById(task.team) : null;
+    const role = getTeamRole(teamDoc, userId);
+    const isCreator = task.createdBy.toString() === userId.toString();
+    if (!isCreator && role !== "owner" && role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "not allowed to assign this task" });
+    }
+
+    const previous = uniqueIds(task.assignedTo);
     task.assignedTo = assignedTo;
     await task.save();
 
-    const activity = await createActivity({
+    const added = uniqueIds(assignedTo).filter((x) => !previous.includes(x));
+    if (task.chat) {
+      await Promise.all(added.map((uid) => addParticipant(task.chat, uid)));
+    }
+
+    await createActivity({
       team: task.team,
-
       task: task._id,
-
       user: userId,
-
-      action: "task_updated",
-
-      metadata: {
-        oldData,
-        newData: {
-          title,
-          description,
-          dueDate,
-          assignedTo,
-        },
-      },
+      action: "user_assigned",
+      metadata: { assignedTo },
     });
-    return res.status(200).json({ message: "task updated", task });
+
+    await createNotifications(added, {
+      message: `You were assigned to task "${task.title}"`,
+      type: "task",
+      relatedId: task._id,
+      exclude: userId,
+    });
+
+    emitTaskUpdate(task);
+
+    return res.status(200).json({ message: "task assignment updated", task });
   } catch (error) {
     return next(error);
   }
@@ -174,69 +332,52 @@ export const update_TaskStatus = async (req, res, next) => {
     const userId = req.user._id;
     const { id } = req.params;
     const { status } = req.body;
-    const oldStatus = task.status;
 
-    const task = await TaskModel.findById(id).populate("team");
-
+    const task = await TaskModel.findById(id);
     if (!task) {
       return res.status(404).json({ message: "task not found" });
     }
 
-    const team = await TeamModel.findById(task.team);
+    const oldStatus = task.status;
 
-    const member = team.members.find(
-      (m) => m.user.toString() === userId.toString(),
-    );
-
-    if (!member) {
-      return res.status(403).json({ message: "not a team member" });
-    }
-
+    const teamDoc = task.team ? await TeamModel.findById(task.team) : null;
+    const role = getTeamRole(teamDoc, userId);
+    const isCreator = task.createdBy.toString() === userId.toString();
     const isAssigned = task.assignedTo.some(
       (u) => u.toString() === userId.toString(),
     );
 
-    const isAdmin = member.role === "admin";
-
-    if (!isAssigned && !isAdmin) {
-      return res.status(403).json({
-        message: "not allowed",
-      });
+    if (!isAssigned && !isCreator && role !== "owner" && role !== "admin") {
+      return res.status(403).json({ message: "not allowed" });
     }
 
-    const isValidTransition = canChangeStatus(task.status, status);
-
-    if (!isValidTransition) {
+    if (!canChangeStatus(oldStatus, status)) {
       return res.status(400).json({
-        message: `invalid status transition from ${task.status} to ${status}`,
+        message: `invalid status transition from ${oldStatus} to ${status}`,
       });
     }
 
     task.status = status;
     await task.save();
 
-
-    const activity = await createActivity({
+    await createActivity({
       team: task.team,
-    
-        task:task._id,
-
-    user:userId,
-
-    action:"status_changed",
-
-    metadata:{
-        oldStatus,
-        newStatus:status
-    }
-
-    
-    })
-
-    return res.status(200).json({
-      message: "status updated",
-      task,
+      task: task._id,
+      user: userId,
+      action: "status_changed",
+      metadata: { oldStatus, newStatus: status },
     });
+
+    await createNotifications([task.createdBy, ...task.assignedTo], {
+      message: `Task "${task.title}" moved to ${status}`,
+      type: "task",
+      relatedId: task._id,
+      exclude: userId,
+    });
+
+    emitTaskUpdate(task);
+
+    return res.status(200).json({ message: "status updated", task });
   } catch (error) {
     return next(error);
   }
@@ -245,34 +386,64 @@ export const update_TaskStatus = async (req, res, next) => {
 export const delete_Task = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const task = await TaskModel.find({ _id: id });
+    const userId = req.user._id;
+
+    const task = await TaskModel.findById(id);
     if (!task) {
       return res.status(404).json({ message: "task not found" });
     }
-    if (task.createdBy.toString() !== req.user._id.toString()) {
+
+    const teamDoc = task.team ? await TeamModel.findById(task.team) : null;
+    const role = getTeamRole(teamDoc, userId);
+    const isCreator = task.createdBy.toString() === userId.toString();
+    if (!isCreator && role !== "owner" && role !== "admin") {
       return res
         .status(403)
-        .json({ message: "you are not the creator of this task" });
+        .json({ message: "you are not allowed to delete this task" });
+    }
+
+    if (task.team) {
+      await TeamModel.findByIdAndUpdate(task.team, {
+        $pull: { tasksId: task._id },
+      });
+    }
+    if (task.chat) {
+      await deleteChatCascade(task.chat);
     }
 
     await TaskModel.findByIdAndDelete(id);
 
- const activity = await createActivity({
+    await createActivity({
       team: task.team,
-
       task: task._id,
-
-      user: req.user._id,
-
+      user: userId,
       action: "task_deleted",
-      metadata: {
-   title : task.title
-
-      },
+      metadata: { title: task.title },
     });
-   
+
+    emitTaskUpdate(task, "task:deleted");
 
     return res.status(200).json({ message: "task deleted" });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// ─── COMMENTS (embedded) ─────────────────────────────────
+
+export const listComments = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const task = await TaskModel.findById(id).populate(
+      "comments.user",
+      "name email image",
+    );
+    if (!task) {
+      return res.status(404).json({ message: "task not found" });
+    }
+    return res
+      .status(200)
+      .json({ message: "comments fetched", comments: task.comments });
   } catch (error) {
     return next(error);
   }
@@ -285,131 +456,152 @@ export const addComment = async (req, res, next) => {
     const { text } = req.body;
 
     const task = await TaskModel.findById(id);
-
     if (!task) {
       return res.status(404).json({ message: "task not found" });
     }
 
-    const newComment = {
-      user: userId,
-      text,
-      createdAt: new Date(),
-    };
+    const teamDoc = task.team ? await TeamModel.findById(task.team) : null;
+    if (!canAccessTask(task, teamDoc, userId)) {
+      return res
+        .status(403)
+        .json({ message: "not allowed to comment on this task" });
+    }
 
-    task.comments.push(newComment);
-
+    task.comments.push({ user: userId, text, createdAt: new Date() });
     await task.save();
 
-
-
-    const activity = await createActivity({
+    await createActivity({
       team: task.team,
-
-      task: task._id,   
-
+      task: task._id,
       user: userId,
-
       action: "comment_added",
-
-      metadata: {
-        comment: text,
-      },
-    }); 
-
-    return res.status(201).json({
-      message: "comment added",
-      comments: task.comments,
+      metadata: { comment: text },
     });
+
+    await createNotifications([task.createdBy, ...task.assignedTo], {
+      message: `New comment on task "${task.title}"`,
+      type: "task",
+      relatedId: task._id,
+      exclude: userId,
+    });
+
+    const populated = await task.populate("comments.user", "name email image");
+
+    return res
+      .status(201)
+      .json({ message: "comment added", comments: populated.comments });
   } catch (error) {
     return next(error);
   }
 };
 
 export const updateComment = async (req, res, next) => {
-  const { id, commentId } = req.params;
-  const { text } = req.body;
+  try {
+    const { id, commentId } = req.params;
+    const { text } = req.body;
+    const userId = req.user._id;
 
-  const existingTask = await taskModel.findById(id);
-  if (!existingTask) {
-    return res.status(404).json({ message: "task not found" });
+    const task = await TaskModel.findById(id);
+    if (!task) {
+      return res.status(404).json({ message: "task not found" });
+    }
+
+    const comment = task.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: "comment not found" });
+    }
+
+    if (comment.user.toString() !== userId.toString()) {
+      return res
+        .status(403)
+        .json({ message: "only the author can edit this comment" });
+    }
+
+    comment.text = text;
+    await task.save();
+
+    return res.status(200).json({ message: "comment updated", comment });
+  } catch (error) {
+    return next(error);
   }
-
-  const commentIndex = existingTask.comments.findIndex(
-    (comment) => comment._id.toString() === commentId,
-  );
-
-  if (commentIndex === -1) {
-    return res.status(404).json({ message: "comment not found" });
-  } else {
-    existingTask.comments[commentIndex].text = text;
-  }
-
-  await existingTask.save();
-  return res
-    .status(200)
-    .json({ message: "comment updated", comment: existingTask.comments });
 };
 
 export const deleteComment = async (req, res, next) => {
-  const { id } = req.params;
+  try {
+    const { id, commentId } = req.params;
+    const userId = req.user._id;
 
-  const existingTask = await taskModel.findById(id);
-  if (!existingTask) {
-    return res.status(404).json({ message: "task not found" });
+    const task = await TaskModel.findById(id);
+    if (!task) {
+      return res.status(404).json({ message: "task not found" });
+    }
+
+    const comment = task.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: "comment not found" });
+    }
+
+    const teamDoc = task.team ? await TeamModel.findById(task.team) : null;
+    const role = getTeamRole(teamDoc, userId);
+    const isAuthor = comment.user.toString() === userId.toString();
+    if (!isAuthor && role !== "owner" && role !== "admin") {
+      return res
+        .status(403)
+        .json({ message: "not allowed to delete this comment" });
+    }
+
+    comment.deleteOne();
+    await task.save();
+
+    await createActivity({
+      team: task.team,
+      task: task._id,
+      user: userId,
+      action: "comment_deleted",
+      metadata: { commentId },
+    });
+
+    return res.status(200).json({ message: "comment deleted" });
+  } catch (error) {
+    return next(error);
   }
-
-  existingTask.comments.splice(commentIndex, 1);
-  await existingTask.save();
-  return res.status(200).json({ message: "comment deleted" });
 };
+
+// ─── ATTACHMENTS ─────────────────────────────────────────
 
 export const uploadTaskAttachments = async (req, res, next) => {
   const uploadedImages = [];
-
   try {
     const { id } = req.params;
     const userId = req.user._id;
 
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({
-        message: "No files uploaded",
-      });
+      return res.status(400).json({ message: "No files uploaded" });
     }
 
     const task = await TaskModel.findById(id);
-
     if (!task) {
-      req.files.forEach((file) => {
-        removeTempFile(file.path);
-      });
-
-      return res.status(404).json({
-        message: "Task not found",
-      });
+      req.files.forEach((file) => removeTempFile(file.path));
+      return res.status(404).json({ message: "Task not found" });
     }
 
-    if (task.createdBy.toString() !== userId.toString()) {
-      req.files.forEach((file) => {
-        removeTempFile(file.path);
-      });
-
-      return res.status(403).json({
-        message: "You are not allowed to upload attachments to this task",
-      });
+    const teamDoc = task.team ? await TeamModel.findById(task.team) : null;
+    if (!canAccessTask(task, teamDoc, userId)) {
+      req.files.forEach((file) => removeTempFile(file.path));
+      return res
+        .status(403)
+        .json({ message: "not allowed to upload attachments to this task" });
     }
 
     for (const file of req.files) {
       try {
         const result = await cloudinary.uploader.upload(file.path, {
           folder: `task-management/tasks/${id}`,
-          resource_type: "image",
+          resource_type: "auto",
         });
-
         uploadedImages.push({
           secure_url: result.secure_url,
-
           public_id: result.public_id,
-
           uploadedBy: userId,
         });
       } finally {
@@ -417,52 +609,24 @@ export const uploadTaskAttachments = async (req, res, next) => {
       }
     }
 
-    if (uploadedImages.length === 0) {
-      return res.status(400).json({
-        message: "No files uploaded",
-      });
-    }
-
     const updatedTask = await TaskModel.findByIdAndUpdate(
       id,
-
-      {
-        $push: {
-          attachments: {
-            $each: uploadedImages,
-          },
-        },
-      },
-
-      {
-        new: true,
-      },
+      { $push: { attachments: { $each: uploadedImages } } },
+      { new: true },
     );
+
+    await createActivity({
+      team: task.team,
+      task: id,
+      user: userId,
+      action: "attachment_uploaded",
+      metadata: { files: uploadedImages.map((f) => f.public_id) },
+    });
 
     return res.status(201).json({
       message: "Task attachments uploaded successfully",
-
       task: updatedTask,
     });
-
-
-    await createActivity({
-
-    team:task.team,
-
-    task:id,
-
-    user:userId,
-
-    action:"attachment_uploaded",
-
-    metadata:{
-        files:uploadedImages.map(
-            file=>file.public_id
-        )
-    }
-
-});
   } catch (error) {
     if (uploadedImages.length) {
       await Promise.all(
@@ -471,53 +635,8 @@ export const uploadTaskAttachments = async (req, res, next) => {
         ),
       );
     }
-
-    next(error);
+    return next(error);
   }
-};
-
-export const changeTaskimage = async (req, res, next) => {
-  const { id } = req.params;
-  const task = await TaskModel.findById(id);
-  if (!task) {
-    removeTempFile(req.file?.path);
-    return res.status(404).json({ message: "task not found" });
-  }
-  if (!req.file) {
-    return res.status(400).json({ message: "file not found" });
-  }
-
-  if (task.attachments && task.attachments.public_id) {
-    await cloudinary.uploader.destroy(task.attachment.public_id);
-  }
-  const image = await cloudinary.uploader.upload(req.file.path, {
-    folder: `task-management/users/${id}`,
-  });
-  removeTempFile(req.file.path);
-
-  await TaskModel.updateOne(
-    {
-      _id: id,
-    },
-
-    {
-      $push: {
-        attachments: {
-          secure_url: image.secure_url,
-          public_id: image.public_id,
-          uploadedBy: userId,
-        },
-      },
-    },
-  );
-
-  return res.status(201).json({
-    message: "attachment uploaded successfully",
-    attachment: {
-      secure_url: image.secure_url,
-      public_id: image.public_id,
-    },
-  });
 };
 
 export const getTaskAttachments = async (req, res, next) => {
@@ -527,47 +646,45 @@ export const getTaskAttachments = async (req, res, next) => {
     if (!task) {
       return res.status(404).json({ message: "task not found" });
     }
-    const attachments = task.attachments;
-    return res
-      .status(200)
-      .json({ message: "task attachments fetched", attachments });
+    return res.status(200).json({
+      message: "task attachments fetched",
+      attachments: task.attachments,
+    });
   } catch (error) {
     return next(error);
   }
 };
+
 export const deleteTaskAttachment = async (req, res, next) => {
   try {
     const { id } = req.params;
+    const userId = req.user._id;
     const { public_id } = req.body;
+
     const task = await TaskModel.findById(id);
     if (!task) {
       return res.status(404).json({ message: "task not found" });
     }
-    const attachment = task.attachments.find(
-      (attachment) => attachment.public_id === public_id,
-    );
+
+    const attachment = task.attachments.find((a) => a.public_id === public_id);
     if (!attachment) {
       return res.status(404).json({ message: "attachment not found" });
     }
+
     await cloudinary.uploader.destroy(public_id);
     task.attachments = task.attachments.filter(
-      (attachment) => attachment.public_id !== public_id,
+      (a) => a.public_id !== public_id,
     );
     await task.save();
-    const activity = await createActivity({
 
-      team:task.team,
+    await createActivity({
+      team: task.team,
+      task: id,
+      user: userId,
+      action: "attachment_deleted",
+      metadata: { file: public_id },
+    });
 
-      task:id,
-
-      user:userId,
-
-      action:"attachment_deleted",
-
-      metadata:{
-          file:public_id
-      }
-    })
     return res.status(200).json({ message: "attachment deleted" });
   } catch (error) {
     return next(error);

@@ -24,7 +24,14 @@ export const validation = (schema) => {
           });
 
         } else {
-          req[key] = result.data;
+          // In Express 5 `req.query` is a getter-only property, so reassigning
+          // it throws. Body/params are writable; for query we skip the rewrite
+          // (downstream handlers read/coerce req.query directly).
+          try {
+            req[key] = result.data;
+          } catch {
+            /* query is read-only on Express 5 — validation still ran above */
+          }
         }
       }
 

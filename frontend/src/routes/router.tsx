@@ -3,6 +3,9 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { ProtectedRoute } from './ProtectedRoute'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { SignupPage } from '@/features/auth/pages/SignupPage'
+import { VerifyEmailPage } from '@/features/auth/pages/VerifyEmailPage'
+import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage'
 import { ProfilePage } from '@/features/users/pages/ProfilePage'
 import { UsersListPage } from '@/features/users/pages/UsersListPage'
 import { TeamsListPage } from '@/features/teams/pages/TeamsListPage'
@@ -16,6 +19,9 @@ import { NotFoundPage } from '@/routes/NotFoundPage'
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/signup', element: <SignupPage /> },
+  { path: '/verify-email', element: <VerifyEmailPage /> },
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
   {
     path: '/',
     element: (

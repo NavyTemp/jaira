@@ -11,13 +11,9 @@ export const createTeamSchema = {
 
     description: z.string().trim().optional(),
 
-    membersId: z
-      .array(objectId, { required_error: "membersId is required" })
-      .min(1, "at least one member is required"),
-
-    tasksId: z.array(objectId).optional().default([]),
-
-    chatId: objectId.optional(),
+    // Optional: create a team alone, or seed it with members. The caller is
+    // always added as the owner/admin by the service.
+    membersId: z.array(objectId).optional().default([]),
   }),
 };
 

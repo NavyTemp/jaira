@@ -6,6 +6,8 @@ import connectiondB from "./DB/connection.js"
 import userRoutr from "./modules/user.controller.js"
 import teamRouter from "./modules/team/team.controller.js"
 import taskRouter from "./modules/Task/task.controller.js"
+import chatRouter from "./modules/chat/chat.controller.js"
+import notificationRouter from "./modules/notification/notification.controller.js"
 
 const bootstrap = (app, port) => {
   app.use(cors())
@@ -22,6 +24,8 @@ const bootstrap = (app, port) => {
   app.use("/users", userRoutr)
   app.use("/teams", teamRouter)
   app.use("/tasks", taskRouter)
+  app.use("/chats", chatRouter)
+  app.use("/notifications", notificationRouter)
 
   app.use((req, res) => {
     return res

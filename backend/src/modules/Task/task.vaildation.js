@@ -1,50 +1,35 @@
 import { z } from "zod";
 
 export const taskStatus = z.enum(["todo", "in_progress", "review", "done"]);
-
 export const taskPriority = z.enum(["low", "medium", "high", "urgent"]);
 
 export const objectId = z
   .string()
   .regex(/^[0-9a-fA-F]{24}$/, "Invalid MongoDB ObjectId");
+
 export const createTaskSchema = {
   body: z.object({
     title: z
-      .string({ required_error: "task name is required" })
+      .string({ required_error: "task title is required" })
       .trim()
-      .min(2, "task name must be at least 2 characters")
-      .max(50, "task name must be under 50 characters"),
+      .min(2, "task title must be at least 2 characters")
+      .max(200, "task title must be under 200 characters"),
 
     description: z
       .string()
       .trim()
-      .min(2, "description must be at least 2 characters")
-      .max(500, "description must be under 500 characters")
+      .max(2000, "description must be under 2000 characters")
       .optional(),
 
-    dueDate: z.string().datetime().optional(),
+    dueDate: z.coerce.date().optional(),
 
-    assignedTo: z
-      .array(objectId, { required_error: "assignedTo is required" })
-      .optional()
-      .default([]),
+    priority: taskPriority.optional(),
 
-    createdBy: objectId.optional(),
-    chat: objectId.optional(),
     team: objectId.optional(),
-    status: z
-      .enum(["pending", "inProgress", "review", "done"])
-      .default("pending"),
-    priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
 
-    attachments: z
-      .array(
-        z.object({
-          url: z.string().url(),
-          type: z.string().optional(),
-        }),
-      )
-      .optional(),
+    assignedTo: z.array(objectId).optional().default([]),
+
+    tags: z.array(z.string().trim()).optional(),
   }),
 };
 
@@ -54,85 +39,102 @@ export const taskIdSchema = {
   }),
 };
 
+export const listTasksSchema = {
+  query: z.object({
+    status: taskStatus.optional(),
+    priority: taskPriority.optional(),
+    team: objectId.optional(),
+    assignedTo: objectId.optional(),
+    dueBefore: z.coerce.date().optional(),
+    dueAfter: z.coerce.date().optional(),
+    page: z.coerce.number().min(1).optional(),
+    limit: z.coerce.number().min(1).max(50).optional(),
+  }),
+};
+
 export const updateTaskSchema = {
   params: z.object({
     id: objectId,
   }),
-
   body: z.object({
     title: z
       .string()
       .trim()
       .min(2, "title must be at least 2 characters")
-      .max(50, "title must be under 50 characters")
+      .max(200, "title must be under 200 characters")
       .optional(),
 
     description: z
       .string()
       .trim()
-      .min(2, "description must be at least 2 characters")
-      .max(500, "description must be under 500 characters")
+      .max(2000, "description must be under 2000 characters")
       .optional(),
 
-    dueDate: z.string().datetime().optional(),
+    dueDate: z.coerce.date().optional(),
 
-    assignedTo: z
-      .array(objectId, { required_error: "assignedTo is required" })
-      .optional()
-      .default([]),
+    priority: taskPriority.optional(),
 
-    status: z
-      .enum(["pending", "inProgress", "review", "done"])
-      .default("pending")
-      .optional(),
-
-    priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
-
-    attachments: z
-      .array(
-        z.object({
-          url: z.string().url(),
-          type: z.string().optional(),
-        }),
-      )
-      .optional(),
+    tags: z.array(z.string().trim()).optional(),
   }),
 };
 
-export const update_TaskStatus = {
-  params: z.object({
-    id: objectId,
-  }),
-
-  body: z.object({
-    status: z
-      .enum(["pending", "inProgress", "review", "done"])
-      .default("pending")
-      .optional(),
-  }),
-};
-
-export const add_comment = {
+export const updateTaskStatusSchema = {
   params: z.object({
     id: objectId,
   }),
   body: z.object({
-    text: z.string(),
+    status: taskStatus,
   }),
 };
 
-export const update_comment = {
+export const assignTaskSchema = {
+  params: z.object({
+    id: objectId,
+  }),
+  body: z.object({
+    assignedTo: z.array(objectId).default([]),
+  }),
+};
+
+export const addCommentSchema = {
+  params: z.object({
+    id: objectId,
+  }),
+  body: z.object({
+    text: z
+      .string({ required_error: "text is required" })
+      .trim()
+      .min(1, "comment cannot be empty")
+      .max(2000, "comment must be under 2000 characters"),
+  }),
+};
+
+export const updateCommentSchema = {
   params: z.object({
     id: objectId,
     commentId: objectId,
   }),
   body: z.object({
-    text: z.string().trim().min(2).max(500),
+    text: z
+      .string({ required_error: "text is required" })
+      .trim()
+      .min(1, "comment cannot be empty")
+      .max(2000, "comment must be under 2000 characters"),
   }),
 };
-export const delete_comment = {
+
+export const commentIdSchema = {
   params: z.object({
     id: objectId,
     commentId: objectId,
+  }),
+};
+
+export const deleteAttachmentSchema = {
+  params: z.object({
+    id: objectId,
+  }),
+  body: z.object({
+    public_id: z.string({ required_error: "public_id is required" }),
   }),
 };

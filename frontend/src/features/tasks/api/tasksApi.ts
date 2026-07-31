@@ -1,21 +1,28 @@
 import { apiClient } from '@/lib/apiClient'
-import type { CreateTaskPayload, Task, TaskStatus } from '../types'
+import type {
+  CreateTaskPayload,
+  Task,
+  TaskPriority,
+  TaskStatus,
+  UpdateTaskPayload,
+} from '../types'
 
-/**
- * The `/tasks` routes do not exist on the backend yet (ROADMAP Phase 4).
- * Functions are kept thin so they slot in unchanged once the controller lands.
- */
+export type TaskListParams = {
+  status?: TaskStatus
+  priority?: TaskPriority
+  team?: string
+  assignedTo?: string
+  page?: number
+  limit?: number
+}
+
 export const tasksApi = {
-  list(params?: {
-    status?: TaskStatus
-    team?: string
-    assignedTo?: string
-    page?: number
-    limit?: number
-  }) {
+  list(params?: TaskListParams) {
     return apiClient
-      .get<{ message: string; tasks: Task[] }>('/tasks', { params })
-      .then((r) => r.data.tasks)
+      .get<{ message: string; tasks: Task[]; total: number }>('/tasks', {
+        params,
+      })
+      .then((r) => r.data)
   },
   getOne(id: string) {
     return apiClient
@@ -27,11 +34,22 @@ export const tasksApi = {
       .post<{ message: string; task: Task }>('/tasks', payload)
       .then((r) => r.data.task)
   },
-  update(id: string, payload: Partial<CreateTaskPayload>) {
-    return apiClient.patch(`/tasks/${id}`, payload).then((r) => r.data)
+  update(id: string, payload: UpdateTaskPayload) {
+    return apiClient
+      .patch<{ message: string; task: Task }>(`/tasks/${id}`, payload)
+      .then((r) => r.data.task)
   },
   changeStatus(id: string, status: TaskStatus) {
-    return apiClient.patch(`/tasks/${id}/status`, { status }).then((r) => r.data)
+    return apiClient
+      .patch<{ message: string; task: Task }>(`/tasks/${id}/status`, { status })
+      .then((r) => r.data.task)
+  },
+  assign(id: string, assignedTo: string[]) {
+    return apiClient
+      .patch<{ message: string; task: Task }>(`/tasks/${id}/assign`, {
+        assignedTo,
+      })
+      .then((r) => r.data.task)
   },
   remove(id: string) {
     return apiClient.delete(`/tasks/${id}`).then((r) => r.data)

@@ -76,6 +76,9 @@ export const signup = async (req, res, next) => {
     return res.status(201).json({
       message: "signup successful, check your email for verification code",
       userId: user._id,
+      // Dev convenience: with no SMTP configured locally, echo the OTP so the
+      // verification flow is testable. Never sent in production.
+      ...(process.env.NODE_ENV !== "production" && { devOtp: otp }),
     });
   } catch (error) {
     return next(error);
@@ -212,9 +215,12 @@ export const forgetPassword = async (req, res, next) => {
       expiresAt: new Date(Date.now() + 5 * 60 * 1000),
     });
 
-    emitter.emit("forgetPassword", { email, otp, userName: user.name });
+    emitter.emit("forgetPassword", { email, code: otp, userName: user.name });
 
-    return res.status(200).json({ message: "if that email exists, a reset code was sent" });
+    return res.status(200).json({
+      message: "if that email exists, a reset code was sent",
+      ...(process.env.NODE_ENV !== "production" && { devOtp: otp }),
+    });
   } catch (error) {
     return next(error);
   }
@@ -296,7 +302,10 @@ export const resendOtp = async (req, res, next) => {
     const eventName = purpose === "VERIFY_EMAIL" ? "sendEmail" : "forgetPassword";
     emitter.emit(eventName, { email, code: otp,  userName: user.name });
 
-    return res.status(200).json({ message: "if that email exists, a code was sent" });
+    return res.status(200).json({
+      message: "if that email exists, a code was sent",
+      ...(process.env.NODE_ENV !== "production" && { devOtp: otp }),
+    });
   } catch (error) {
     return next(error);
   }

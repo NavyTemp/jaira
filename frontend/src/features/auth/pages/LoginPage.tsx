@@ -21,6 +21,7 @@ export function LoginPage() {
   const {
     register,
     handleSubmit,
+    getValues,
     formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -32,21 +33,25 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       const res = await authApi.login(values)
-      // The backend does not return the user object on login (yet),
-      // so we store the minimum we know and let /users routes refine it later.
       authStorage.setSession({
         accessToken: res.access_token,
         refreshToken: res.refresh_token,
         user: {
-          _id: '',
-          name: values.email.split('@')[0] ?? 'user',
-          email: values.email,
-          role: 'user',
+          _id: res.user._id,
+          name: res.user.name,
+          email: res.user.email,
+          role: res.user.role,
         },
       })
       navigate(next, { replace: true })
     } catch (err) {
-      setServerError(extractApiError(err, 'Login failed'))
+      const message = extractApiError(err, 'Login failed')
+      // Unverified accounts should go verify first.
+      if (message.toLowerCase().includes('verify')) {
+        navigate(`/verify-email?email=${encodeURIComponent(getValues('email'))}`)
+        return
+      }
+      setServerError(message)
     } finally {
       setSubmitting(false)
     }
@@ -86,12 +91,14 @@ export function LoginPage() {
           Sign in
         </Button>
 
-        <p className="text-center text-sm text-slate-600">
-          No account?{' '}
-          <Link to="/signup" className="font-medium text-slate-900 underline">
-            Create one
+        <div className="flex items-center justify-between text-sm">
+          <Link to="/forgot-password" className="text-slate-600 underline">
+            Forgot password?
           </Link>
-        </p>
+          <Link to="/signup" className="font-medium text-slate-900 underline">
+            Create account
+          </Link>
+        </div>
       </form>
     </div>
   )

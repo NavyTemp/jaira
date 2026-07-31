@@ -29,8 +29,9 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    const status = error.response?.status
-    if (status === 401 || status === 403) {
+    // Only a 401 means the token is missing/invalid/expired -> end the session.
+    // A 403 is an authorization/business rule and must NOT log the user out.
+    if (error.response?.status === 401) {
       handleSessionExpired()
     }
     return Promise.reject(error)

@@ -20,11 +20,15 @@ emitter.on("sendEmail", async (data) => {
 
 emitter.on("forgetPassword", async (data) => {
   try {
-    const { email, otp, userName } = data;
+    // Accept either `code` or the legacy `otp` field so both callers work.
+    const { email, code, otp, userName } = data;
     await sendEmail({
       to: email,
       subject: "Password Reset",
-      html: forgotPasswordTemplate({ code: otp, userName: userName || "user" }),
+      html: forgotPasswordTemplate({
+        code: code ?? otp,
+        userName: userName || "user",
+      }),
     });
   } catch (err) {
     console.error("forgetPassword event failed:", err.message);

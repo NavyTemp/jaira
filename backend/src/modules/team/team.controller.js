@@ -46,4 +46,11 @@ teamRouter.delete(
   TS.deleteTeamImage,
 );
 
+teamRouter.get(
+  "/:id/image",
+  authentication,
+  validation(TV.teamIdSchema),
+  TS.getTeamImage,
+);
+
 export default teamRouter;

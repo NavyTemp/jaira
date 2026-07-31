@@ -49,11 +49,9 @@ const activitySchema = new mongoose.Schema(
             "ownership_transferred",
             "team_created",
             "team_updated",
-            "team_deleted", 
+            "team_deleted",
             "leave",
-            "roleChanged "
-        
-        
+            "role_changed"
         ]
     },
 

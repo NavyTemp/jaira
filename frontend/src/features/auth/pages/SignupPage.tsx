@@ -27,8 +27,11 @@ export function SignupPage() {
     setServerError(null)
     setSubmitting(true)
     try {
-      await authApi.signup(values)
-      navigate('/login', { replace: true })
+      const res = await authApi.signup(values)
+      navigate(
+        `/verify-email?email=${encodeURIComponent(values.email)}`,
+        { state: { devOtp: res.devOtp }, replace: true },
+      )
     } catch (err) {
       setServerError(extractApiError(err, 'Signup failed'))
     } finally {
@@ -47,11 +50,7 @@ export function SignupPage() {
           <p className="text-sm text-slate-500">Task Management System</p>
         </div>
 
-        <Input
-          label="Name"
-          {...register('name')}
-          error={errors.name?.message}
-        />
+        <Input label="Name" {...register('name')} error={errors.name?.message} />
         <Input
           label="Email"
           type="email"
@@ -71,6 +70,18 @@ export function SignupPage() {
             {...register('age', { valueAsNumber: true })}
             error={errors.age?.message}
           />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-slate-700">Gender</span>
+            <select
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
+              {...register('gender')}
+            >
+              <option value="male">male</option>
+              <option value="female">female</option>
+            </select>
+          </label>
         </div>
         <Input
           label="Password"

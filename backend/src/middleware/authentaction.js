@@ -6,7 +6,11 @@ export const authentication = async (req, res, next) => {
   try {
     const { authorization } = req.headers;
 
-    const [prefix, token] = authorization.split(' ') || [];
+    if (!authorization) {
+      return res.status(401).json({ message: 'Authorization header missing' });
+    }
+
+    const [prefix, token] = authorization.split(' ');
 
     if (!token || !prefix) {
       return res.status(401).json({ message: 'Invalid token format' });
