@@ -2,18 +2,21 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowRight, Lock, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { ErrorState } from '@/components/ui/EmptyState'
 import { authStorage } from '@/lib/authStorage'
 import { extractApiError } from '@/lib/apiClient'
 import { authApi } from '../api/authApi'
 import { loginSchema } from '../schemas'
 import type { LoginValues } from '../schemas'
+import { AuthLayout } from '../components/AuthLayout'
 
 export function LoginPage() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const next = params.get('next') ?? '/tasks'
+  const next = params.get('next') ?? '/dashboard'
 
   const [serverError, setServerError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -58,20 +61,28 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Sign in</h1>
-          <p className="text-sm text-slate-500">Task Management System</p>
-        </div>
-
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to pick up where you left off."
+      footer={
+        <p className="text-center text-sm text-muted">
+          Don't have an account?{' '}
+          <Link
+            to="/signup"
+            className="font-semibold text-brand hover:underline"
+          >
+            Create one for free
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Input
           label="Email"
           type="email"
           autoComplete="email"
+          placeholder="you@company.com"
+          icon={<Mail size={16} />}
           {...register('email')}
           error={errors.email?.message}
         />
@@ -79,27 +90,28 @@ export function LoginPage() {
           label="Password"
           type="password"
           autoComplete="current-password"
+          placeholder="••••••••"
+          icon={<Lock size={16} />}
           {...register('password')}
           error={errors.password?.message}
         />
 
-        {serverError ? (
-          <p className="text-sm text-red-600">{serverError}</p>
-        ) : null}
-
-        <Button type="submit" className="w-full" loading={submitting}>
-          Sign in
-        </Button>
-
-        <div className="flex items-center justify-between text-sm">
-          <Link to="/forgot-password" className="text-slate-600 underline">
+        <div className="flex justify-end">
+          <Link
+            to="/forgot-password"
+            className="text-sm font-medium text-brand hover:underline"
+          >
             Forgot password?
           </Link>
-          <Link to="/signup" className="font-medium text-slate-900 underline">
-            Create account
-          </Link>
         </div>
+
+        {serverError ? <ErrorState message={serverError} /> : null}
+
+        <Button type="submit" size="lg" fullWidth loading={submitting}>
+          Sign in
+          {!submitting ? <ArrowRight size={17} /> : null}
+        </Button>
       </form>
-    </div>
+    </AuthLayout>
   )
 }

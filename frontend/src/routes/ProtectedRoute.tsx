@@ -18,7 +18,7 @@ export function ProtectedRoute({ children, roles }: Props) {
     return <Navigate to={`/login?next=${next}`} replace />
   }
   if (roles && !roles.includes(role)) {
-    return <Navigate to="/tasks" replace />
+    return <Navigate to="/dashboard" replace />
   }
   return <>{children}</>
 }

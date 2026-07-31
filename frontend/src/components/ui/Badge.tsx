@@ -1,42 +1,90 @@
+import type { HTMLAttributes, ReactNode } from 'react'
+import { cn } from '@/lib/cn'
+import {
+  PRIORITY_LABEL,
+  STATUS_DOT,
+  STATUS_LABEL,
+} from '@/features/tasks/constants'
 import type { TaskPriority, TaskStatus } from '@/features/tasks/types'
 
-const statusStyle: Record<TaskStatus, string> = {
-  todo: 'bg-slate-100 text-slate-700',
-  in_progress: 'bg-blue-100 text-blue-700',
-  review: 'bg-amber-100 text-amber-700',
-  done: 'bg-emerald-100 text-emerald-700',
+type Tone =
+  | 'neutral'
+  | 'brand'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'info'
+  | 'outline'
+
+const toneClass: Record<Tone, string> = {
+  neutral: 'bg-surface-3 text-muted',
+  brand: 'bg-brand-soft text-brand-soft-fg',
+  success: 'bg-success-soft text-success-soft-fg',
+  warning: 'bg-warning-soft text-warning-soft-fg',
+  danger: 'bg-danger-soft text-danger-soft-fg',
+  info: 'bg-info-soft text-info-soft-fg',
+  outline: 'border border-border text-muted',
 }
 
-const statusLabel: Record<TaskStatus, string> = {
-  todo: 'To do',
-  in_progress: 'In progress',
-  review: 'Review',
-  done: 'Done',
-}
-
-const priorityStyle: Record<TaskPriority, string> = {
-  low: 'bg-slate-100 text-slate-600',
-  medium: 'bg-sky-100 text-sky-700',
-  high: 'bg-orange-100 text-orange-700',
-  urgent: 'bg-red-100 text-red-700',
-}
-
-export function StatusBadge({ status }: { status: TaskStatus }) {
+export function Badge({
+  tone = 'neutral',
+  className,
+  children,
+  ...rest
+}: HTMLAttributes<HTMLSpanElement> & { tone?: Tone; children: ReactNode }) {
   return (
     <span
-      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusStyle[status]}`}
+      {...rest}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
+        toneClass[tone],
+        className,
+      )}
     >
-      {statusLabel[status]}
+      {children}
     </span>
   )
 }
 
-export function PriorityBadge({ priority }: { priority: TaskPriority }) {
+const statusTone: Record<TaskStatus, Tone> = {
+  todo: 'neutral',
+  in_progress: 'info',
+  review: 'warning',
+  done: 'success',
+}
+
+export function StatusBadge({
+  status,
+  className,
+}: {
+  status: TaskStatus
+  className?: string
+}) {
   return (
-    <span
-      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${priorityStyle[priority]}`}
-    >
-      {priority}
-    </span>
+    <Badge tone={statusTone[status]} className={className}>
+      <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[status])} />
+      {STATUS_LABEL[status]}
+    </Badge>
+  )
+}
+
+const priorityTone: Record<TaskPriority, Tone> = {
+  low: 'neutral',
+  medium: 'info',
+  high: 'warning',
+  urgent: 'danger',
+}
+
+export function PriorityBadge({
+  priority,
+  className,
+}: {
+  priority: TaskPriority
+  className?: string
+}) {
+  return (
+    <Badge tone={priorityTone[priority]} className={className}>
+      {PRIORITY_LABEL[priority]}
+    </Badge>
   )
 }

@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, KeyRound, Lock, MailCheck } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { OtpInput } from '@/components/ui/OtpInput'
+import { ErrorState } from '@/components/ui/EmptyState'
 import { extractApiError } from '@/lib/apiClient'
 import { authApi } from '../api/authApi'
+import { AuthLayout } from '../components/AuthLayout'
 
 export function ResetPasswordPage() {
   const navigate = useNavigate()
@@ -18,8 +22,11 @@ export function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const mismatch = !!confirmPassword && newPassword !== confirmPassword
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
+    if (mismatch) return
     setError(null)
     setSubmitting(true)
     try {
@@ -33,22 +40,25 @@ export function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">
-            Reset password
-          </h1>
-          <p className="text-sm text-slate-500">
-            Enter the code and your new password.
-          </p>
-        </div>
-
+    <AuthLayout
+      title="Choose a new password"
+      subtitle="Enter the code we emailed you, then set a new password."
+      footer={
+        <p className="text-center text-sm text-muted">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-1.5 font-semibold text-brand hover:underline"
+          >
+            <ArrowLeft size={14} />
+            Back to sign in
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={onSubmit} className="space-y-5">
         {location.state?.devOtp ? (
-          <p className="text-sm text-emerald-600">
+          <p className="flex items-start gap-2 rounded-xl border border-success/25 bg-success-soft px-3.5 py-2.5 text-sm text-success-soft-fg">
+            <MailCheck size={16} className="mt-px shrink-0" />
             Dev mode: your code is {location.state.devOtp}
           </p>
         ) : null}
@@ -56,41 +66,55 @@ export function ResetPasswordPage() {
         <Input
           label="Email"
           type="email"
+          autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          required
         />
-        <Input
-          label="Reset code"
-          inputMode="numeric"
-          maxLength={6}
+
+        <OtpInput
           value={otp}
-          onChange={(e) => setOtp(e.target.value)}
+          onChange={setOtp}
+          label="Reset code"
+          autoFocus={!!email}
         />
+
         <Input
           label="New password"
           type="password"
+          autoComplete="new-password"
+          placeholder="••••••••"
+          icon={<Lock size={16} />}
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
+          hint="At least 8 characters with upper, lower, a digit and a symbol."
+          required
         />
         <Input
           label="Confirm new password"
           type="password"
+          autoComplete="new-password"
+          placeholder="••••••••"
+          icon={<Lock size={16} />}
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
+          error={mismatch ? 'Passwords do not match' : undefined}
+          required
         />
 
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        {error ? <ErrorState message={error} /> : null}
 
-        <Button type="submit" className="w-full" loading={submitting}>
+        <Button
+          type="submit"
+          size="lg"
+          fullWidth
+          loading={submitting}
+          disabled={otp.length < 6 || !newPassword || mismatch}
+        >
+          {!submitting ? <KeyRound size={16} /> : null}
           Reset password
         </Button>
-
-        <p className="text-center text-sm text-slate-600">
-          <Link to="/login" className="font-medium text-slate-900 underline">
-            Back to sign in
-          </Link>
-        </p>
       </form>
-    </div>
+    </AuthLayout>
   )
 }

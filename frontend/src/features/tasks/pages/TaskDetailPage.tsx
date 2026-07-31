@@ -1,34 +1,76 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  ArrowLeft,
+  ArrowRight,
+  CalendarClock,
+  Check,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  User as UserIcon,
+  UsersRound,
+} from 'lucide-react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { StatusBadge, PriorityBadge } from '@/components/ui/Badge'
+import { Badge, PriorityBadge, StatusBadge } from '@/components/ui/Badge'
+import { Avatar } from '@/components/ui/Avatar'
+import { ConfirmDialog } from '@/components/ui/Modal'
+import { Dropdown, DropdownItem, DropdownSeparator } from '@/components/ui/Dropdown'
+import { EmptyState, ErrorState } from '@/components/ui/EmptyState'
+import { Skeleton, SkeletonText } from '@/components/ui/Skeleton'
+import { useToast } from '@/components/ui/Toast'
+import { cn } from '@/lib/cn'
 import { extractApiError } from '@/lib/apiClient'
-import { displayUser, formatDate, formatDateTime, userId } from '@/lib/format'
 import { authStorage } from '@/lib/authStorage'
-import { tasksApi } from '../api/tasksApi'
+import { displayUser, dueLabel, dueState, formatDateTime, userId } from '@/lib/format'
 import { teamsApi } from '@/features/teams/api/teamsApi'
-import { commentsApi } from '@/features/comments/api/commentsApi'
+import { tasksApi } from '../api/tasksApi'
+import { ALLOWED_TRANSITIONS, STATUS_LABEL } from '../constants'
+import { TaskAttachments } from '../components/TaskAttachments'
+import { TaskComments } from '../components/TaskComments'
+import { TaskFormModal } from '../components/TaskFormModal'
 import type { TaskStatus } from '../types'
 
-const NEXT_STATUS: Record<TaskStatus, TaskStatus[]> = {
-  todo: ['in_progress'],
-  in_progress: ['review', 'todo'],
-  review: ['done', 'in_progress'],
-  done: [],
+function DetailField({
+  label,
+  icon,
+  children,
+}: {
+  label: string
+  icon: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div>
+      <dt className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">
+        {icon}
+        {label}
+      </dt>
+      <dd className="text-sm text-fg">{children}</dd>
+    </div>
+  )
 }
 
 export function TaskDetailPage() {
   const { id = '' } = useParams<{ id: string }>()
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const toast = useToast()
   const me = authStorage.getUser()
 
-  const [comment, setComment] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const { data: task, isLoading } = useQuery({
+  const {
+    data: task,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['task', id],
     queryFn: () => tasksApi.getOne(id),
     enabled: !!id,
@@ -45,44 +87,76 @@ export function TaskDetailPage() {
 
   const statusMut = useMutation({
     mutationFn: (status: TaskStatus) => tasksApi.changeStatus(id, status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['task', id] }),
-    onError: (err) => setError(extractApiError(err)),
+    onSuccess: (updated) => {
+      qc.invalidateQueries({ queryKey: ['task', id] })
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      toast.success(`Moved to ${STATUS_LABEL[updated.status]}`)
+    },
+    onError: (err) => toast.error(extractApiError(err, 'Could not change status')),
   })
 
   const assignMut = useMutation({
     mutationFn: (assignedTo: string[]) => tasksApi.assign(id, assignedTo),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['task', id] }),
-    onError: (err) => setError(extractApiError(err)),
-  })
-
-  const addCommentMut = useMutation({
-    mutationFn: () => commentsApi.add(id, comment),
     onSuccess: () => {
-      setComment('')
       qc.invalidateQueries({ queryKey: ['task', id] })
+      qc.invalidateQueries({ queryKey: ['tasks'] })
     },
-    onError: (err) => setError(extractApiError(err)),
+    onError: (err) => toast.error(extractApiError(err, 'Could not update assignees')),
   })
 
-  const delCommentMut = useMutation({
-    mutationFn: (commentId: string) => commentsApi.remove(id, commentId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['task', id] }),
-    onError: (err) => setError(extractApiError(err)),
-  })
-
-  const delTaskMut = useMutation({
+  const deleteMut = useMutation({
     mutationFn: () => tasksApi.remove(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] })
+      toast.success('Task deleted')
       navigate('/tasks', { replace: true })
     },
-    onError: (err) => setError(extractApiError(err)),
+    onError: (err) => toast.error(extractApiError(err, 'Could not delete task')),
   })
 
-  if (isLoading) return <Card><p className="text-sm text-slate-500">Loading…</p></Card>
-  if (!task) return <Card><p className="text-sm text-slate-500">Task not found.</p></Card>
+  if (isError) {
+    return (
+      <ErrorState
+        message={extractApiError(error, 'Could not load this task')}
+        onRetry={() => void refetch()}
+      />
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-4 w-24" />
+        <Card>
+          <Skeleton className="mb-4 h-7 w-2/3" />
+          <SkeletonText lines={3} />
+        </Card>
+        <Card>
+          <SkeletonText lines={4} />
+        </Card>
+      </div>
+    )
+  }
+
+  if (!task) {
+    return (
+      <Card>
+        <EmptyState
+          title="Task not found"
+          message="It may have been deleted, or you no longer have access."
+          action={
+            <Link to="/tasks">
+              <Button variant="outline">Back to tasks</Button>
+            </Link>
+          }
+        />
+      </Card>
+    )
+  }
 
   const assignedIds = task.assignedTo.map((u) => userId(u))
+  const nextStatuses = ALLOWED_TRANSITIONS[task.status]
+  const state = dueState(task.dueDate)
 
   const toggleAssignee = (uid: string) => {
     const next = assignedIds.includes(uid)
@@ -92,163 +166,264 @@ export function TaskDetailPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>{task.title}</CardTitle>
-          <div className="flex items-center gap-2">
-            <PriorityBadge priority={task.priority} />
-            <StatusBadge status={task.status} />
-          </div>
-        </CardHeader>
+    <div>
+      <Link
+        to="/tasks"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted transition hover:text-fg"
+      >
+        <ArrowLeft size={15} />
+        Back to tasks
+      </Link>
 
-        <p className="whitespace-pre-wrap text-sm text-slate-700">
-          {task.description || 'No description.'}
-        </p>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-4 lg:col-span-2">
+          {/* ── Overview ── */}
+          <Card>
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold leading-tight tracking-tight text-fg sm:text-2xl">
+                  {task.title}
+                </h1>
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  <StatusBadge status={task.status} />
+                  <PriorityBadge priority={task.priority} />
+                  {task.tags.map((tag) => (
+                    <Badge key={tag} tone="outline">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
 
-        <dl className="mt-4 grid grid-cols-2 gap-y-2 text-sm md:grid-cols-4">
-          <div>
-            <dt className="text-slate-500">Team</dt>
-            <dd className="text-slate-900">
-              {typeof task.team === 'object' && task.team ? task.team.name : 'Personal'}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Due</dt>
-            <dd className="text-slate-900">{formatDate(task.dueDate)}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Created by</dt>
-            <dd className="text-slate-900">{displayUser(task.createdBy)}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Assignees</dt>
-            <dd className="text-slate-900">
-              {task.assignedTo.length
-                ? task.assignedTo.map((u) => displayUser(u)).join(', ')
-                : '—'}
-            </dd>
-          </div>
-        </dl>
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <span className="text-sm text-slate-500">Move to:</span>
-          {NEXT_STATUS[task.status].length === 0 ? (
-            <span className="text-sm text-slate-400">no further transitions</span>
-          ) : (
-            NEXT_STATUS[task.status].map((s) => (
-              <Button
-                key={s}
-                size="sm"
-                variant="secondary"
-                loading={statusMut.isPending}
-                onClick={() => statusMut.mutate(s)}
+              <Dropdown
+                trigger={
+                  <span className="grid h-9 w-9 place-items-center rounded-xl text-muted transition hover:bg-surface-3 hover:text-fg">
+                    <MoreHorizontal size={18} />
+                  </span>
+                }
               >
-                {s}
-              </Button>
-            ))
-          )}
-          <div className="flex-1" />
-          {task.chat ? (
-            <Link to={`/chats?chat=${task.chat}`}>
-              <Button size="sm" variant="ghost">
-                Open task chat
-              </Button>
-            </Link>
-          ) : null}
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={() => delTaskMut.mutate()}
-            loading={delTaskMut.isPending}
-          >
-            Delete
-          </Button>
+                {(close) => (
+                  <>
+                    <DropdownItem
+                      icon={<Pencil size={15} />}
+                      onClick={() => {
+                        close()
+                        setEditOpen(true)
+                      }}
+                    >
+                      Edit task
+                    </DropdownItem>
+                    {task.chat ? (
+                      <DropdownItem
+                        icon={<MessageSquare size={15} />}
+                        onClick={() => {
+                          close()
+                          navigate(`/chats?chat=${task.chat}`)
+                        }}
+                      >
+                        Open task chat
+                      </DropdownItem>
+                    ) : null}
+                    <DropdownSeparator />
+                    <DropdownItem
+                      icon={<Trash2 size={15} />}
+                      danger
+                      onClick={() => {
+                        close()
+                        setConfirmDelete(true)
+                      }}
+                    >
+                      Delete task
+                    </DropdownItem>
+                  </>
+                )}
+              </Dropdown>
+            </div>
+
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted">
+              {task.description || 'No description provided.'}
+            </p>
+
+            <dl className="mt-6 grid grid-cols-2 gap-5 border-t border-border pt-5 sm:grid-cols-4">
+              <DetailField label="Team" icon={<UsersRound size={12} />}>
+                {typeof task.team === 'object' && task.team ? (
+                  <Link
+                    to={`/teams/${task.team._id}`}
+                    className="font-medium text-brand hover:underline"
+                  >
+                    {task.team.name}
+                  </Link>
+                ) : (
+                  'Personal'
+                )}
+              </DetailField>
+
+              <DetailField label="Due" icon={<CalendarClock size={12} />}>
+                <span
+                  className={cn(
+                    state === 'overdue' && 'font-semibold text-danger',
+                    state === 'today' && 'font-semibold text-warning',
+                  )}
+                >
+                  {dueLabel(task.dueDate)}
+                </span>
+              </DetailField>
+
+              <DetailField label="Created by" icon={<UserIcon size={12} />}>
+                <span className="inline-flex items-center gap-1.5">
+                  <Avatar
+                    name={displayUser(task.createdBy)}
+                    seed={userId(task.createdBy)}
+                    src={
+                      typeof task.createdBy === 'object'
+                        ? task.createdBy.image?.secure_url
+                        : undefined
+                    }
+                    size="xs"
+                  />
+                  {displayUser(task.createdBy)}
+                </span>
+              </DetailField>
+
+              <DetailField label="Created" icon={<CalendarClock size={12} />}>
+                {formatDateTime(task.createdAt)}
+              </DetailField>
+            </dl>
+          </Card>
+
+          <Card>
+            <TaskComments taskId={task._id} comments={task.comments} />
+          </Card>
         </div>
 
-        {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-      </Card>
+        {/* ── Side rail ── */}
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="mb-4">
+              <CardTitle>Move task</CardTitle>
+            </CardHeader>
 
-      {team ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Assign team members</CardTitle>
-          </CardHeader>
-          <div className="flex flex-wrap gap-2">
-            {team.members.map((m) => {
-              const uid = m.user._id
-              const active = assignedIds.includes(uid)
-              return (
-                <button
-                  key={uid}
-                  onClick={() => toggleAssignee(uid)}
-                  disabled={assignMut.isPending}
-                  className={
-                    'rounded-full border px-3 py-1 text-sm transition ' +
-                    (active
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50')
-                  }
-                >
-                  {m.user.name}
-                </button>
-              )
-            })}
-          </div>
-        </Card>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Comments ({task.comments.length})</CardTitle>
-        </CardHeader>
-
-        <form
-          className="mb-4 flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (comment.trim()) addCommentMut.mutate()
-          }}
-        >
-          <input
-            className="h-10 flex-1 rounded-md border border-slate-300 bg-white px-3 text-sm"
-            placeholder="Write a comment…"
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-          />
-          <Button type="submit" loading={addCommentMut.isPending}>
-            Send
-          </Button>
-        </form>
-
-        {task.comments.length === 0 ? (
-          <p className="text-sm text-slate-500">No comments yet.</p>
-        ) : (
-          <ul className="space-y-3">
-            {task.comments.map((c) => (
-              <li key={c._id} className="rounded-md bg-slate-50 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-900">
-                    {displayUser(c.user)}
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    {formatDateTime(c.createdAt)}
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-slate-700">{c.text}</p>
-                {userId(c.user) === me?._id ? (
-                  <button
-                    onClick={() => delCommentMut.mutate(c._id)}
-                    className="mt-1 text-xs text-red-500 hover:underline"
+            {nextStatuses.length === 0 ? (
+              <p className="flex items-center gap-2 rounded-xl bg-success-soft px-3 py-2.5 text-sm font-medium text-success-soft-fg">
+                <Check size={15} />
+                This task is complete.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {nextStatuses.map((s) => (
+                  <Button
+                    key={s}
+                    variant="outline"
+                    fullWidth
+                    className="justify-between"
+                    loading={statusMut.isPending}
+                    onClick={() => statusMut.mutate(s)}
                   >
-                    delete
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+                    <span>Move to {STATUS_LABEL[s]}</span>
+                    <ArrowRight size={15} />
+                  </Button>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader className="mb-4">
+              <CardTitle>Assignees</CardTitle>
+              {assignMut.isPending ? (
+                <span className="text-xs text-muted">Saving…</span>
+              ) : null}
+            </CardHeader>
+
+            {!team ? (
+              task.assignedTo.length === 0 ? (
+                <p className="text-sm text-muted">
+                  Personal tasks can't have assignees.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {task.assignedTo.map((u) => (
+                    <li
+                      key={userId(u)}
+                      className="flex items-center gap-2.5 text-sm text-fg"
+                    >
+                      <Avatar
+                        name={displayUser(u)}
+                        seed={userId(u)}
+                        src={typeof u === 'object' ? u.image?.secure_url : undefined}
+                        size="sm"
+                      />
+                      {displayUser(u)}
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : (
+              <div className="space-y-1">
+                {team.members.map((m) => {
+                  const active = assignedIds.includes(m.user._id)
+                  return (
+                    <button
+                      key={m.user._id}
+                      onClick={() => toggleAssignee(m.user._id)}
+                      disabled={assignMut.isPending}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition',
+                        active
+                          ? 'border-brand bg-brand-soft'
+                          : 'border-transparent hover:bg-surface-2',
+                      )}
+                    >
+                      <Avatar
+                        name={m.user.name}
+                        seed={m.user._id}
+                        src={m.user.image?.secure_url}
+                        size="sm"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={cn(
+                            'block truncate text-sm font-medium',
+                            active ? 'text-brand-soft-fg' : 'text-fg',
+                          )}
+                        >
+                          {m.user._id === me?._id ? 'You' : m.user.name}
+                        </span>
+                        <span className="block text-xs capitalize text-muted">
+                          {m.role}
+                        </span>
+                      </span>
+                      {active ? (
+                        <Check size={15} className="shrink-0 text-brand" />
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <TaskAttachments taskId={task._id} attachments={task.attachments} />
+          </Card>
+        </div>
+      </div>
+
+      <TaskFormModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        task={task}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={() => deleteMut.mutate()}
+        loading={deleteMut.isPending}
+        title="Delete this task?"
+        message={`"${task.title}" and its comments will be permanently deleted.`}
+        confirmLabel="Delete task"
+      />
     </div>
   )
 }

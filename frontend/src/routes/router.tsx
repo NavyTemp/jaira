@@ -6,6 +6,7 @@ import { SignupPage } from '@/features/auth/pages/SignupPage'
 import { VerifyEmailPage } from '@/features/auth/pages/VerifyEmailPage'
 import { ForgotPasswordPage } from '@/features/auth/pages/ForgotPasswordPage'
 import { ResetPasswordPage } from '@/features/auth/pages/ResetPasswordPage'
+import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
 import { ProfilePage } from '@/features/users/pages/ProfilePage'
 import { UsersListPage } from '@/features/users/pages/UsersListPage'
 import { TeamsListPage } from '@/features/teams/pages/TeamsListPage'
@@ -30,7 +31,8 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
-      { index: true, element: <Navigate to="/tasks" replace /> },
+      { index: true, element: <Navigate to="/dashboard" replace /> },
+      { path: 'dashboard', element: <DashboardPage /> },
       { path: 'profile', element: <ProfilePage /> },
 
       // Tasks

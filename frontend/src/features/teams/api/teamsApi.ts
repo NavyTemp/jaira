@@ -56,4 +56,19 @@ export const teamsApi = {
       })
       .then((r) => r.data.team)
   },
+
+  // ── image ──
+  /** POST is rejected once an image exists, so switch to PUT for replacements. */
+  setImage(id: string, file: File, hasExisting: boolean) {
+    const url = `/teams/${id}/image`
+    const form = new FormData()
+    form.append('image', file)
+    const request = hasExisting
+      ? apiClient.put<{ message: string; team: Team }>(url, form)
+      : apiClient.post<{ message: string; team: Team }>(url, form)
+    return request.then((r) => r.data.team)
+  },
+  removeImage(id: string) {
+    return apiClient.delete(`/teams/${id}/image`).then((r) => r.data)
+  },
 }

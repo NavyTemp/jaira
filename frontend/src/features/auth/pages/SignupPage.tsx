@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useNavigate } from 'react-router-dom'
+import { ArrowRight, Lock, Mail, Phone, User } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
+import { Input, Select } from '@/components/ui/Input'
+import { ErrorState } from '@/components/ui/EmptyState'
 import { extractApiError } from '@/lib/apiClient'
 import { authApi } from '../api/authApi'
 import { signupSchema } from '../schemas'
 import type { SignupValues } from '../schemas'
+import { AuthLayout } from '../components/AuthLayout'
 
 export function SignupPage() {
   const navigate = useNavigate()
@@ -28,10 +31,10 @@ export function SignupPage() {
     setSubmitting(true)
     try {
       const res = await authApi.signup(values)
-      navigate(
-        `/verify-email?email=${encodeURIComponent(values.email)}`,
-        { state: { devOtp: res.devOtp }, replace: true },
-      )
+      navigate(`/verify-email?email=${encodeURIComponent(values.email)}`, {
+        state: { devOtp: res.devOtp },
+        replace: true,
+      })
     } catch (err) {
       setServerError(extractApiError(err, 'Signup failed'))
     } finally {
@@ -40,77 +43,91 @@ export function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="w-full max-w-md space-y-3 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Create account</h1>
-          <p className="text-sm text-slate-500">Task Management System</p>
-        </div>
-
-        <Input label="Name" {...register('name')} error={errors.name?.message} />
+    <AuthLayout
+      title="Create your account"
+      subtitle="Set up your workspace in under a minute."
+      footer={
+        <p className="text-center text-sm text-muted">
+          Already have an account?{' '}
+          <Link to="/login" className="font-semibold text-brand hover:underline">
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <Input
+          label="Full name"
+          placeholder="Jane Cooper"
+          icon={<User size={16} />}
+          autoComplete="name"
+          {...register('name')}
+          error={errors.name?.message}
+        />
         <Input
           label="Email"
           type="email"
+          placeholder="you@company.com"
+          icon={<Mail size={16} />}
+          autoComplete="email"
           {...register('email')}
           error={errors.email?.message}
         />
-        <div className="grid grid-cols-2 gap-3">
+
+        <div className="grid gap-4 sm:grid-cols-2">
           <Input
             label="Phone"
             placeholder="010xxxxxxxx"
+            icon={<Phone size={16} />}
+            autoComplete="tel"
             {...register('phone')}
             error={errors.phone?.message}
           />
           <Input
             label="Age"
             type="number"
+            placeholder="24"
             {...register('age', { valueAsNumber: true })}
             error={errors.age?.message}
           />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700">Gender</span>
-            <select
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm"
-              {...register('gender')}
-            >
-              <option value="male">male</option>
-              <option value="female">female</option>
-            </select>
-          </label>
-        </div>
+
+        <Select
+          label="Gender"
+          {...register('gender')}
+          error={errors.gender?.message}
+        >
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </Select>
+
         <Input
           label="Password"
           type="password"
+          placeholder="••••••••"
+          icon={<Lock size={16} />}
+          autoComplete="new-password"
           {...register('password')}
           error={errors.password?.message}
+          hint="At least 8 characters with upper, lower, a digit and a symbol."
         />
         <Input
           label="Confirm password"
           type="password"
+          placeholder="••••••••"
+          icon={<Lock size={16} />}
+          autoComplete="new-password"
           {...register('confirmpassword')}
           error={errors.confirmpassword?.message}
         />
 
-        {serverError ? (
-          <p className="text-sm text-red-600">{serverError}</p>
-        ) : null}
+        {serverError ? <ErrorState message={serverError} /> : null}
 
-        <Button type="submit" className="w-full" loading={submitting}>
-          Sign up
+        <Button type="submit" size="lg" fullWidth loading={submitting}>
+          Create account
+          {!submitting ? <ArrowRight size={17} /> : null}
         </Button>
-
-        <p className="text-center text-sm text-slate-600">
-          Have an account?{' '}
-          <Link to="/login" className="font-medium text-slate-900 underline">
-            Sign in
-          </Link>
-        </p>
       </form>
-    </div>
+    </AuthLayout>
   )
 }

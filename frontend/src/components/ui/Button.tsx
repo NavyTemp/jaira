@@ -1,55 +1,86 @@
+import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes } from 'react'
+import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
-type Size = 'sm' | 'md' | 'lg'
+type Variant =
+  | 'primary'
+  | 'secondary'
+  | 'outline'
+  | 'ghost'
+  | 'danger'
+  | 'soft'
+type Size = 'xs' | 'sm' | 'md' | 'lg' | 'icon' | 'icon-sm'
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: Variant
   size?: Size
   loading?: boolean
+  fullWidth?: boolean
 }
 
 const variantClass: Record<Variant, string> = {
   primary:
-    'bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-400',
+    'bg-brand text-brand-fg shadow-sm hover:bg-brand-hover active:translate-y-px disabled:opacity-50',
   secondary:
-    'bg-slate-100 text-slate-900 hover:bg-slate-200 disabled:bg-slate-50',
+    'bg-surface-3 text-fg hover:bg-border active:translate-y-px disabled:opacity-50',
+  outline:
+    'border border-border bg-surface text-fg hover:bg-surface-2 hover:border-border-strong active:translate-y-px disabled:opacity-50',
   ghost:
-    'bg-transparent text-slate-700 hover:bg-slate-100 disabled:text-slate-400',
+    'bg-transparent text-muted hover:bg-surface-3 hover:text-fg active:translate-y-px disabled:opacity-50',
   danger:
-    'bg-red-600 text-white hover:bg-red-700 disabled:bg-red-300',
+    'bg-danger text-white shadow-sm hover:bg-danger-hover active:translate-y-px disabled:opacity-50',
+  soft:
+    'bg-brand-soft text-brand-soft-fg hover:brightness-95 active:translate-y-px disabled:opacity-50 dark:hover:brightness-125',
 }
 
 const sizeClass: Record<Size, string> = {
-  sm: 'h-8 px-3 text-sm',
-  md: 'h-10 px-4 text-sm',
-  lg: 'h-12 px-6 text-base',
+  xs: 'h-7 gap-1.5 px-2.5 text-xs rounded-lg',
+  sm: 'h-9 gap-1.5 px-3 text-sm rounded-lg',
+  md: 'h-10 gap-2 px-4 text-sm rounded-xl',
+  lg: 'h-12 gap-2 px-6 text-base rounded-xl',
+  icon: 'h-10 w-10 rounded-xl',
+  'icon-sm': 'h-8 w-8 rounded-lg',
 }
 
-export function Button({
-  variant = 'primary',
-  size = 'md',
-  loading = false,
-  disabled,
-  className,
-  children,
-  ...rest
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    variant = 'primary',
+    size = 'md',
+    loading = false,
+    fullWidth = false,
+    disabled,
+    className,
+    children,
+    ...rest
+  },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       {...rest}
       disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md font-medium transition',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400',
-        'disabled:cursor-not-allowed',
+        'relative inline-flex shrink-0 items-center justify-center whitespace-nowrap font-medium',
+        'transition-[background-color,border-color,color,opacity,transform] duration-150',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
+        'disabled:cursor-not-allowed disabled:active:translate-y-0',
         variantClass[variant],
         sizeClass[size],
+        fullWidth && 'w-full',
         className,
       )}
     >
-      {loading ? 'Loading…' : children}
+      {loading ? (
+        <Loader2
+          size={size === 'lg' ? 18 : 15}
+          className="animate-spin"
+          aria-hidden
+        />
+      ) : null}
+      {children}
     </button>
   )
-}
+})

@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, Mail, Send } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { ErrorState } from '@/components/ui/EmptyState'
 import { extractApiError } from '@/lib/apiClient'
 import { authApi } from '../api/authApi'
+import { AuthLayout } from '../components/AuthLayout'
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate()
@@ -29,39 +32,47 @@ export function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">
-            Forgot password
-          </h1>
-          <p className="text-sm text-slate-500">
-            We'll send a reset code to your email.
-          </p>
-        </div>
-
-        <Input
-          label="Email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-        <Button type="submit" className="w-full" loading={submitting}>
-          Send reset code
-        </Button>
-
-        <p className="text-center text-sm text-slate-600">
-          <Link to="/login" className="font-medium text-slate-900 underline">
+    <AuthLayout
+      title="Reset your password"
+      subtitle="Enter the email on your account and we'll send you a reset code."
+      footer={
+        <p className="text-center text-sm text-muted">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-1.5 font-semibold text-brand hover:underline"
+          >
+            <ArrowLeft size={14} />
             Back to sign in
           </Link>
         </p>
+      }
+    >
+      <form onSubmit={onSubmit} className="space-y-4">
+        <Input
+          label="Email"
+          type="email"
+          autoComplete="email"
+          placeholder="you@company.com"
+          icon={<Mail size={16} />}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoFocus
+        />
+
+        {error ? <ErrorState message={error} /> : null}
+
+        <Button
+          type="submit"
+          size="lg"
+          fullWidth
+          loading={submitting}
+          disabled={!email.trim()}
+        >
+          {!submitting ? <Send size={16} /> : null}
+          Send reset code
+        </Button>
       </form>
-    </div>
+    </AuthLayout>
   )
 }

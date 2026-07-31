@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { ArrowRight, MailCheck } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { OtpInput } from '@/components/ui/OtpInput'
+import { ErrorState } from '@/components/ui/EmptyState'
 import { extractApiError } from '@/lib/apiClient'
 import { authApi } from '../api/authApi'
+import { AuthLayout } from '../components/AuthLayout'
 
 export function VerifyEmailPage() {
   const navigate = useNavigate()
@@ -20,6 +24,7 @@ export function VerifyEmailPage() {
       : null,
   )
   const [submitting, setSubmitting] = useState(false)
+  const [resending, setResending] = useState(false)
 
   const onVerify = async (e: FormEvent) => {
     e.preventDefault()
@@ -38,65 +43,80 @@ export function VerifyEmailPage() {
   const onResend = async () => {
     setError(null)
     setInfo(null)
+    setResending(true)
     try {
       const res = await authApi.resendOtp(email, 'VERIFY_EMAIL')
+      const devOtp = (res as { devOtp?: string }).devOtp
       setInfo(
-        (res as { devOtp?: string }).devOtp
-          ? `Dev mode: your new code is ${(res as { devOtp?: string }).devOtp}`
-          : 'A new code was sent.',
+        devOtp ? `Dev mode: your new code is ${devOtp}` : 'A new code was sent.',
       )
     } catch (err) {
       setError(extractApiError(err, 'Could not resend code'))
+    } finally {
+      setResending(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
-      <form
-        onSubmit={onVerify}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
-      >
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Verify email</h1>
-          <p className="text-sm text-slate-500">
-            Enter the 6-digit code we sent you.
-          </p>
-        </div>
-
+    <AuthLayout
+      title="Verify your email"
+      subtitle={
+        email
+          ? `We sent a 6-digit code to ${email}. Enter it below to activate your account.`
+          : 'Enter your email and the 6-digit code we sent you.'
+      }
+      footer={
+        <p className="text-center text-sm text-muted">
+          Wrong account?{' '}
+          <Link to="/login" className="font-semibold text-brand hover:underline">
+            Back to sign in
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={onVerify} className="space-y-5">
         <Input
           label="Email"
           type="email"
+          autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-        />
-        <Input
-          label="Verification code"
-          inputMode="numeric"
-          maxLength={6}
-          value={otp}
-          onChange={(e) => setOtp(e.target.value)}
+          required
         />
 
-        {info ? <p className="text-sm text-emerald-600">{info}</p> : null}
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+        <OtpInput value={otp} onChange={setOtp} autoFocus={!!email} />
 
-        <Button type="submit" className="w-full" loading={submitting}>
-          Verify
+        {info ? (
+          <p className="flex items-start gap-2 rounded-xl border border-success/25 bg-success-soft px-3.5 py-2.5 text-sm text-success-soft-fg">
+            <MailCheck size={16} className="mt-px shrink-0" />
+            {info}
+          </p>
+        ) : null}
+        {error ? <ErrorState message={error} /> : null}
+
+        <Button
+          type="submit"
+          size="lg"
+          fullWidth
+          loading={submitting}
+          disabled={otp.length < 6 || !email}
+        >
+          Verify email
+          {!submitting ? <ArrowRight size={17} /> : null}
         </Button>
 
-        <div className="flex items-center justify-between text-sm">
+        <p className="text-center text-sm text-muted">
+          Didn't get it?{' '}
           <button
             type="button"
             onClick={onResend}
-            className="text-slate-600 underline"
+            disabled={resending || !email}
+            className="font-semibold text-brand hover:underline disabled:opacity-50"
           >
-            Resend code
+            {resending ? 'Sending…' : 'Resend code'}
           </button>
-          <Link to="/login" className="font-medium text-slate-900 underline">
-            Back to sign in
-          </Link>
-        </div>
+        </p>
       </form>
-    </div>
+    </AuthLayout>
   )
 }

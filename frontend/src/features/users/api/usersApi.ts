@@ -1,6 +1,12 @@
 import { apiClient } from '@/lib/apiClient'
 import type { User } from '../types'
 
+function imageForm(file: File): FormData {
+  const form = new FormData()
+  form.append('image', file)
+  return form
+}
+
 export const usersApi = {
   // ── self ──
   me() {
@@ -27,6 +33,23 @@ export const usersApi = {
   },
   deleteSelf() {
     return apiClient.delete('/users/me').then((r) => r.data)
+  },
+
+  // ── avatar ──
+  /**
+   * The API rejects POST when an image already exists, so pick the verb
+   * based on whether the account currently has one.
+   */
+  setAvatar(file: File, hasExisting: boolean) {
+    const url = '/users/me/image'
+    const form = imageForm(file)
+    const request = hasExisting
+      ? apiClient.put<{ message: string; user: User }>(url, form)
+      : apiClient.post<{ message: string; user: User }>(url, form)
+    return request.then((r) => r.data.user)
+  },
+  removeAvatar() {
+    return apiClient.delete('/users/me/image').then((r) => r.data)
   },
 
   // ── admin ──
